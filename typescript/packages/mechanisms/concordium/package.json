@@ -1,0 +1,67 @@
+{
+  "name": "@x402/concordium",
+  "version": "0.1.0",
+  "description": "Concordium blockchain implementation of the x402 payment protocol",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./exact/client": {
+      "import": "./dist/exact/client/index.js",
+      "types": "./dist/exact/client/index.d.ts"
+    },
+    "./exact/server": {
+      "import": "./dist/exact/server/index.js",
+      "types": "./dist/exact/server/index.d.ts"
+    },
+    "./exact/facilitator": {
+      "import": "./dist/exact/facilitator/index.js",
+      "types": "./dist/exact/facilitator/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/utils/index.js",
+      "types": "./dist/utils/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@x402/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "x402",
+    "concordium",
+    "blockchain",
+    "payments",
+    "micropayments",
+    "http-402"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coinbase/x402.git",
+    "directory": "packages/concordium"
+  }
+}
