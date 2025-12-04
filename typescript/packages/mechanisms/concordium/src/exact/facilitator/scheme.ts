@@ -202,32 +202,38 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     }
 
     // Verify recipient matches
-    if (!txInfo.recipient || txInfo.recipient.toLowerCase() !== requirements.payTo.toLowerCase()) {
-      return {
-        isValid: false,
-        invalidReason: "recipient_mismatch",
-        payer: concordiumPayload.sender,
-      };
+    if (txInfo.recipient) {
+      if (txInfo.recipient.toLowerCase() !== requirements.payTo.toLowerCase()) {
+        return {
+          isValid: false,
+          invalidReason: "recipient_mismatch",
+          payer: concordiumPayload.sender,
+        };
+      }
     }
 
     // Verify amount is sufficient
-    if (!txInfo.amount || BigInt(txInfo.amount) < BigInt(requirements.amount)) {
-      return {
-        isValid: false,
-        invalidReason: "insufficient_amount",
-        payer: concordiumPayload.sender,
-      };
+    if (txInfo.amount) {
+      if (BigInt(txInfo.amount) < BigInt(requirements.amount)) {
+        return {
+          isValid: false,
+          invalidReason: "insufficient_amount",
+          payer: concordiumPayload.sender,
+        };
+      }
     }
 
     // Verify asset matches (if specified)
-    const expectedAsset = requirements.asset || "";
-    const actualAsset = txInfo.asset || "";
-    if (expectedAsset !== actualAsset) {
-      return {
-        isValid: false,
-        invalidReason: "asset_mismatch",
-        payer: concordiumPayload.sender,
-      };
+    if (txInfo.asset !== undefined) {
+      const expectedAsset = requirements.asset || "";
+      const actualAsset = txInfo.asset || "";
+      if (expectedAsset !== actualAsset) {
+        return {
+          isValid: false,
+          invalidReason: "asset_mismatch",
+          payer: concordiumPayload.sender,
+        };
+      }
     }
 
     return {
