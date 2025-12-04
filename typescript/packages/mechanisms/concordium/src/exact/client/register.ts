@@ -1,6 +1,7 @@
 import { x402Client, PaymentPolicy } from "@x402/core/client";
 import { Network } from "@x402/core/types";
 import { ExactConcordiumScheme, ExactConcordiumSchemeConfig } from "./scheme";
+import { ExactConcordiumSchemeV1 } from "../v1";
 import { CONCORDIUM_V1_NETWORKS } from "../../types";
 
 /**
@@ -63,8 +64,9 @@ export function registerExactConcordiumScheme(
   }
 
   // Register all V1 networks
+  const v1Scheme = new ExactConcordiumSchemeV1(config);
   CONCORDIUM_V1_NETWORKS.forEach(network => {
-    client.registerV1(network as Network, scheme);
+    client.registerV1(network as Network, v1Scheme);
   });
 
   // Apply policies if provided

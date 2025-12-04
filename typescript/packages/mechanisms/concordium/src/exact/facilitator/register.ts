@@ -1,6 +1,7 @@
 import { x402Facilitator } from "@x402/core/facilitator";
 import { Network } from "@x402/core/types";
 import { ExactConcordiumScheme, ConcordiumNodeClient } from "./scheme";
+import { ExactConcordiumSchemeV1 } from "../v1";
 import { CONCORDIUM_V1_NETWORKS } from "../../types";
 
 /**
@@ -78,8 +79,14 @@ export function registerExactConcordiumScheme(
   }
 
   // Register all V1 networks
+  const v1Scheme = new ExactConcordiumSchemeV1({
+    nodeClient: config.nodeClient,
+    requireFinalization: config.requireFinalization,
+    finalizationTimeoutMs: config.finalizationTimeoutMs,
+  });
+
   CONCORDIUM_V1_NETWORKS.forEach(network => {
-    facilitator.registerV1(network as Network, scheme);
+    facilitator.registerV1(network as Network, v1Scheme);
   });
 
   return facilitator;
