@@ -1,33 +1,13 @@
 import { x402Facilitator } from "@x402/core/facilitator";
-import { Network } from "@x402/core/types";
-import { ExactConcordiumScheme, ConcordiumNodeClient } from "./scheme";
-import { ExactConcordiumSchemeV1 } from "../v1";
+import { Network, SchemeNetworkFacilitator } from "@x402/core/types";
+import { ExactConcordiumScheme, ConcordiumNodeClient, ExactConcordiumSchemeConfig } from "./scheme";
+import { ExactConcordiumSchemeV1Facilitator } from "../v1";
 import { CONCORDIUM_V1_NETWORKS } from "../../types";
 
 /**
  * Configuration options for registering Concordium schemes to an x402Facilitator
  */
-export interface ConcordiumFacilitatorConfig {
-  /**
-   * The Concordium node client for verifying and settling transactions
-   */
-  nodeClient: ConcordiumNodeClient;
-
-  /**
-   * Whether to wait for transaction finalization before settling.
-   * If false, accepts committed (but not finalized) transactions.
-   *
-   * @default true
-   */
-  requireFinalization?: boolean;
-
-  /**
-   * Timeout in milliseconds for waiting for finalization
-   *
-   * @default 60000 (60 seconds)
-   */
-  finalizationTimeoutMs?: number;
-
+export interface ConcordiumFacilitatorConfig extends ExactConcordiumSchemeConfig {
   /**
    * Optional specific networks to register
    * If not provided, registers wildcard support (ccd:*)
@@ -79,7 +59,7 @@ export function registerExactConcordiumScheme(
   }
 
   // Register all V1 networks
-  const v1Scheme = new ExactConcordiumSchemeV1({
+  const v1Scheme: SchemeNetworkFacilitator = new ExactConcordiumSchemeV1Facilitator({
     nodeClient: config.nodeClient,
     requireFinalization: config.requireFinalization,
     finalizationTimeoutMs: config.finalizationTimeoutMs,

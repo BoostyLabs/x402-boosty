@@ -14,7 +14,7 @@
  * 3. Client sends this payload with the txHash to the server
  * 4. Facilitator verifies the transaction on-chain and confirms settlement
  */
-export interface ExactConcordiumPayloadV2 {
+export interface ExactConcordiumPayloadV2 extends Record<string, unknown> {
   /**
    * The transaction hash of the already-broadcasted payment transaction
    */
@@ -34,7 +34,7 @@ export interface ExactConcordiumPayloadV2 {
 /**
  * The payload structure for Concordium exact payments (V1 - legacy).
  */
-export interface ExactConcordiumPayloadV1 {
+export interface ExactConcordiumPayloadV1 extends Record<string, unknown> {
   /**
    * The transaction hash of the already-broadcasted payment transaction
    */
