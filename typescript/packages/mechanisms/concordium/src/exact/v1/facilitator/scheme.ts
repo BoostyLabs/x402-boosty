@@ -99,7 +99,7 @@ export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
       };
     }
 
-    if (txInfo.sender.toLowerCase() !== concordiumPayload.sender.toLowerCase()) {
+    if (txInfo.sender && txInfo.sender.toLowerCase() !== concordiumPayload.sender.toLowerCase()) {
       return {
         isValid: false,
         invalidReason: "sender_mismatch",
@@ -107,7 +107,7 @@ export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
       };
     }
 
-    if (!txInfo.recipient || txInfo.recipient.toLowerCase() !== requirementsV1.payTo.toLowerCase()) {
+    if (txInfo.recipient && txInfo.recipient.toLowerCase() !== requirementsV1.payTo.toLowerCase()) {
       return {
         isValid: false,
         invalidReason: "recipient_mismatch",

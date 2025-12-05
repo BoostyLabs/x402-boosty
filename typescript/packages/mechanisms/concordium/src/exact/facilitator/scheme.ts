@@ -193,7 +193,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     }
 
     // Verify sender matches
-    if (txInfo.sender.toLowerCase() !== concordiumPayload.sender.toLowerCase()) {
+    if (txInfo.sender && txInfo.sender.toLowerCase() !== concordiumPayload.sender.toLowerCase()) {
       return {
         isValid: false,
         invalidReason: "sender_mismatch",
