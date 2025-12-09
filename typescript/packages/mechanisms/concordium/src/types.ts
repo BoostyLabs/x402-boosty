@@ -81,6 +81,22 @@ export const CONCORDIUM_V1_NETWORKS = [
 export type ConcordiumV1Network = (typeof CONCORDIUM_V1_NETWORKS)[number];
 
 /**
+ * Map V1 network names to V2 CAIP-2 identifiers
+ */
+export const V1_TO_V2_NETWORK_MAP: Record<ConcordiumV1Network, ConcordiumNetwork> = {
+  "concordium": CONCORDIUM_NETWORKS.MAINNET,
+  "concordium-testnet": CONCORDIUM_NETWORKS.TESTNET,
+};
+
+/**
+ * Map V2 CAIP-2 identifiers to V1 network names
+ */
+export const V2_TO_V1_NETWORK_MAP: Record<string, ConcordiumV1Network> = {
+  [CONCORDIUM_NETWORKS.MAINNET]: "concordium",
+  [CONCORDIUM_NETWORKS.TESTNET]: "concordium-testnet",
+};
+
+/**
  * Asset information for Concordium tokens
  */
 export interface ConcordiumAssetInfo {
