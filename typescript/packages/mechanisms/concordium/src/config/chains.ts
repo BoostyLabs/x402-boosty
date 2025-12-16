@@ -44,9 +44,7 @@ export const CONCORDIUM_MAINNET: ConcordiumChainConfig = {
   network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
   v1Network: "concordium",
   grpcUrl: "grpc.mainnet.concordium.com:20000",
-  grpcUrlFallbacks: [
-    "grpc.mainnet.concordium.software:20000",
-  ],
+  grpcUrlFallbacks: ["grpc.mainnet.concordium.software:20000"],
   explorerUrl: "https://dashboard.mainnet.concordium.software",
   nativeToken: {
     symbol: "CCD",
@@ -64,9 +62,7 @@ export const CONCORDIUM_TESTNET: ConcordiumChainConfig = {
   network: "ccd:4221332d34e1694168c2a0c0b3fd0f27",
   v1Network: "concordium-testnet",
   grpcUrl: "grpc.testnet.concordium.com:20000",
-  grpcUrlFallbacks: [
-    "grpc.testnet.concordium.software:20000",
-  ],
+  grpcUrlFallbacks: ["grpc.testnet.concordium.software:20000"],
   explorerUrl: "https://dashboard.testnet.concordium.software",
   nativeToken: {
     symbol: "CCD",
@@ -79,7 +75,7 @@ export const CONCORDIUM_TESTNET: ConcordiumChainConfig = {
  * All supported Concordium chains indexed by V1 network name
  */
 export const CONCORDIUM_CHAINS: Record<string, ConcordiumChainConfig> = {
-  "concordium": CONCORDIUM_MAINNET,
+  concordium: CONCORDIUM_MAINNET,
   "concordium-testnet": CONCORDIUM_TESTNET,
 };
 
@@ -121,6 +117,8 @@ export function getChainConfig(network: string): ConcordiumChainConfig | undefin
 
 /**
  * Get chain configuration or throw if not found
+ *
+ * @param network
  */
 export function getChainConfigOrThrow(network: string): ConcordiumChainConfig {
   const config = getChainConfig(network);
@@ -132,6 +130,8 @@ export function getChainConfigOrThrow(network: string): ConcordiumChainConfig {
 
 /**
  * Convert V1 network name to V2 CAIP-2 format
+ *
+ * @param v1Network
  */
 export function v1ToV2Network(v1Network: string): ConcordiumNetwork | undefined {
   const config = CONCORDIUM_CHAINS[v1Network];
@@ -140,6 +140,8 @@ export function v1ToV2Network(v1Network: string): ConcordiumNetwork | undefined 
 
 /**
  * Convert V2 CAIP-2 format to V1 network name
+ *
+ * @param v2Network
  */
 export function v2ToV1Network(v2Network: string): string | undefined {
   const config = CONCORDIUM_CHAINS_BY_CAIP2[v2Network];
@@ -148,6 +150,9 @@ export function v2ToV1Network(v2Network: string): string | undefined {
 
 /**
  * Get explorer URL for a transaction
+ *
+ * @param network
+ * @param txHash
  */
 export function getExplorerTxUrl(network: string, txHash: string): string | undefined {
   const config = getChainConfig(network);
@@ -157,6 +162,9 @@ export function getExplorerTxUrl(network: string, txHash: string): string | unde
 
 /**
  * Get explorer URL for an account
+ *
+ * @param network
+ * @param address
  */
 export function getExplorerAccountUrl(network: string, address: string): string | undefined {
   const config = getChainConfig(network);

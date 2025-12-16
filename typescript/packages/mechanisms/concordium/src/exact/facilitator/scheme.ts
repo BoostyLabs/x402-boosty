@@ -160,7 +160,6 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     try {
       txInfo = await this.config.nodeClient.getTransactionStatus(concordiumPayload.txHash);
     } catch (error) {
-      console.error("Failed to get transaction status:", error);
       return {
         isValid: false,
         invalidReason: "transaction_lookup_failed",

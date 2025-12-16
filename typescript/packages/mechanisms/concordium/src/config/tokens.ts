@@ -103,12 +103,14 @@ export const TOKEN_REGISTRIES: Record<string, NetworkTokenRegistry> = {
  * V1 network name to token registry mapping
  */
 export const TOKEN_REGISTRIES_V1: Record<string, NetworkTokenRegistry> = {
-  "concordium": MAINNET_TOKENS,
+  concordium: MAINNET_TOKENS,
   "concordium-testnet": TESTNET_TOKENS,
 };
 
 /**
  * Get token registry for a network
+ *
+ * @param network
  */
 export function getTokenRegistry(network: string): NetworkTokenRegistry | undefined {
   return TOKEN_REGISTRIES[network] || TOKEN_REGISTRIES_V1[network];
@@ -116,6 +118,9 @@ export function getTokenRegistry(network: string): NetworkTokenRegistry | undefi
 
 /**
  * Get a specific token by symbol on a network
+ *
+ * @param network
+ * @param symbol
  */
 export function getTokenBySymbol(network: string, symbol: string): CIS2TokenConfig | undefined {
   const registry = getTokenRegistry(network);
@@ -127,6 +132,10 @@ export function getTokenBySymbol(network: string, symbol: string): CIS2TokenConf
 
 /**
  * Get a token by contract index
+ *
+ * @param network
+ * @param contractIndex
+ * @param contractSubindex
  */
 export function getTokenByContract(
   network: string,
@@ -137,12 +146,14 @@ export function getTokenByContract(
   if (!registry) return undefined;
 
   return registry.tokens.find(
-    t => t.contractIndex === contractIndex && t.contractSubindex === contractSubindex
+    t => t.contractIndex === contractIndex && t.contractSubindex === contractSubindex,
   );
 }
 
 /**
  * Get all stablecoins on a network
+ *
+ * @param network
  */
 export function getStablecoins(network: string): CIS2TokenConfig[] {
   const registry = getTokenRegistry(network);
@@ -155,6 +166,8 @@ export function getStablecoins(network: string): CIS2TokenConfig[] {
  * Format asset string for x402 protocol
  * Native CCD: "" (empty string)
  * CIS-2 tokens: "contractIndex:contractSubindex:tokenId"
+ *
+ * @param token
  */
 export function formatAssetString(token: CIS2TokenConfig): string {
   return `${token.contractIndex}:${token.contractSubindex}:${token.tokenId}`;
@@ -162,6 +175,8 @@ export function formatAssetString(token: CIS2TokenConfig): string {
 
 /**
  * Parse asset string from x402 protocol
+ *
+ * @param asset
  */
 export function parseAssetString(asset: string): {
   isNative: boolean;
@@ -188,6 +203,8 @@ export function parseAssetString(asset: string): {
 
 /**
  * Check if asset string represents native CCD
+ *
+ * @param asset
  */
 export function isNativeCCD(asset: string): boolean {
   return !asset || asset === "";

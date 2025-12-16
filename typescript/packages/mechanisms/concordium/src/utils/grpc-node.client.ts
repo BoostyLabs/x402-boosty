@@ -17,7 +17,7 @@ export interface ConcordiumGRPCClientLike {
   getBlockItemStatus(txHash: string): Promise<BlockItemStatus | null>;
   waitForTransactionFinalization?(
     txHash: string,
-    timeoutMs?: number
+    timeoutMs?: number,
   ): Promise<FinalizedTransaction | null>;
 }
 
@@ -129,6 +129,9 @@ export function createConcordiumNodeClient(
 
     /**
      * Poll for transaction finalization (fallback method)
+     *
+     * @param txHash
+     * @param timeoutMs
      */
     async pollForFinalization(
       txHash: string,
@@ -151,7 +154,7 @@ export function createConcordiumNodeClient(
         if (status.status === "failed") {
           return status;
         }
-        
+
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
 
@@ -163,11 +166,11 @@ export function createConcordiumNodeClient(
 
 /**
  * Map SDK transaction status to ConcordiumTransactionInfo
+ *
+ * @param txHash
+ * @param status
  */
-function mapTransactionStatus(
-  txHash: string,
-  status: BlockItemStatus,
-): ConcordiumTransactionInfo {
+function mapTransactionStatus(txHash: string, status: BlockItemStatus): ConcordiumTransactionInfo {
   const info: ConcordiumTransactionInfo = {
     txHash,
     blockHash: status.outcome?.blockHash ?? "",
@@ -203,6 +206,11 @@ function mapTransactionStatus(
   return info;
 }
 
+/**
+ *
+ * @param sdkStatus
+ * @param outcome
+ */
 function mapStatusEnum(
   sdkStatus: "received" | "committed" | "finalized",
   outcome?: TransactionOutcome,
@@ -229,6 +237,9 @@ function mapStatusEnum(
  *
  * @param mockTransactions - Map of txHash to transaction info
  * @param options - Mock behavior options
+ * @param options.delayMs
+ * @param options.finalizationDelayMs
+ * @param options.failureProbability
  * @returns Mock ConcordiumNodeClient
  *
  * @example
@@ -299,6 +310,8 @@ export function createMockConcordiumNodeClient(
 
 /**
  * Helper to create a mock transaction for testing
+ *
+ * @param overrides
  */
 export function createMockTransaction(
   overrides: Partial<ConcordiumTransactionInfo> = {},

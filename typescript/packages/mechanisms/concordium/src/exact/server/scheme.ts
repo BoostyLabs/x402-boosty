@@ -70,11 +70,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * });
    * ```
    */
-  registerAsset(
-    network: Network,
-    symbol: string,
-    asset: ConcordiumAssetInfo,
-  ): this {
+  registerAsset(network: Network, symbol: string, asset: ConcordiumAssetInfo): this {
     const key = this.assetKey(network, symbol);
     this.assets.set(key, asset);
     return this;
@@ -82,6 +78,9 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
   /**
    * Get registered asset.
+   *
+   * @param network
+   * @param symbol
    */
   getAsset(network: Network, symbol: string): ConcordiumAssetInfo | undefined {
     // Try exact network match
@@ -94,6 +93,9 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
   /**
    * Parse price into AssetAmount.
+   *
+   * @param price
+   * @param network
    */
   async parsePrice(price: Price, network: Network): Promise<AssetAmount> {
     // Already AssetAmount - pass through
@@ -108,9 +110,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
     // Reject USD prices
     if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(
-        `USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`
-      );
+      throw new Error(`USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`);
     }
 
     // Default to CCD (extra.asset handled in parseWithExtra)
@@ -126,6 +126,10 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   /**
    * Parse price with extra metadata (called by your middleware).
    * This is the main entry point that handles extra.asset.
+   *
+   * @param price
+   * @param network
+   * @param extra
    */
   parsePriceWithExtra(
     price: Price,
@@ -144,9 +148,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
     // Reject USD prices
     if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(
-        `USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`
-      );
+      throw new Error(`USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`);
     }
 
     // Resolve asset
@@ -177,23 +179,43 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
   /**
    * Enhance payment requirements (no-op for Concordium).
+   *
+   * @param requirements
+   * @param _supportedKind
+   * @param _supportedKind.x402Version
+   * @param _supportedKind.scheme
+   * @param _supportedKind.network
+   * @param _supportedKind.extra
+   * @param _extensionKeys
    */
   enhancePaymentRequirements(
     requirements: PaymentRequirements,
-    _supportedKind: { x402Version: number; scheme: string; network: Network; extra?: Record<string, unknown> },
+    _supportedKind: {
+      x402Version: number;
+      scheme: string;
+      network: Network;
+      extra?: Record<string, unknown>;
+    },
     _extensionKeys: string[],
   ): Promise<PaymentRequirements> {
     return Promise.resolve(requirements);
   }
 
+  /**
+   *
+   * @param network
+   * @param symbol
+   */
   private assetKey(network: Network, symbol: string): string {
     return `${network}:${symbol.toUpperCase()}`;
   }
 
-  private resolveAsset(
-    network: Network,
-    extra?: Record<string, unknown>,
-  ): ConcordiumAssetInfo {
+  /**
+   *
+   * @param network
+   * @param extra
+   */
+  private resolveAsset(network: Network, extra?: Record<string, unknown>): ConcordiumAssetInfo {
     // No extra.asset -> native CCD
     if (!extra?.asset) {
       return CCD_NATIVE;
@@ -203,9 +225,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
     // Must be string symbol
     if (typeof symbol !== "string") {
-      throw new Error(
-        `extra.asset must be a string symbol. Got: ${typeof symbol}`
-      );
+      throw new Error(`extra.asset must be a string symbol. Got: ${typeof symbol}`);
     }
 
     // Native CCD
@@ -219,14 +239,18 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       const registered = this.listRegisteredSymbols(network);
       throw new Error(
         `Unknown asset "${symbol}" on ${network}. ` +
-        `Registered: CCD${registered.length ? ", " + registered.join(", ") : ""}. ` +
-        `Use registerAsset() to add.`
+          `Registered: CCD${registered.length ? ", " + registered.join(", ") : ""}. ` +
+          `Use registerAsset() to add.`,
       );
     }
 
     return asset;
   }
 
+  /**
+   *
+   * @param network
+   */
   private listRegisteredSymbols(network: Network): string[] {
     const symbols: string[] = [];
 
@@ -240,6 +264,11 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     return [...new Set(symbols)];
   }
 
+  /**
+   *
+   * @param price
+   * @param decimals
+   */
   private toSmallestUnits(price: string | number, decimals: number): string {
     const value = typeof price === "string" ? parseFloat(price) : price;
 
@@ -251,10 +280,22 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     return smallest.toString();
   }
 
-  private isAssetAmount(price: Price): price is AssetAmount {
+  /**
+   *
+   * @param price
+   */
+  private isAssetAmount(
+    price: Price,
+  ): price is AssetAmount {
     return typeof price === "object" && price !== null && "amount" in price;
   }
 
+  /**
+   *
+   * @param price
+   * @param price.amount
+   * @param price.asset
+   */
   private validateAssetAmount(price: { amount: string; asset?: string }): void {
     if (!price.amount || isNaN(Number(price.amount))) {
       throw new Error(`Invalid amount: ${price.amount}`);
