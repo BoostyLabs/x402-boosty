@@ -1,4 +1,5 @@
 import {
+  Network,
   PaymentPayload,
   PaymentRequirements,
   SchemeNetworkFacilitator,
@@ -88,6 +89,8 @@ export interface ExactConcordiumSchemeConfig {
  */
 export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
   readonly scheme = "exact";
+  /** Concordium CAIP family */
+  readonly caipFamily = "ccd:*";
   private readonly config: Required<ExactConcordiumSchemeConfig>;
 
   /**
@@ -110,8 +113,15 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * @param _ - The network identifier (unused)
    * @returns undefined (Concordium has no extra data)
    */
-  getExtra(_: string): Record<string, unknown> | undefined {
+  getExtra(_: Network): Record<string, unknown> | undefined {
     return undefined;
+  }
+
+  /**
+   * Concordium facilitator does not act as payer; return empty signer list.
+   */
+  getSigners(_: string): string[] {
+    return [];
   }
 
   /**

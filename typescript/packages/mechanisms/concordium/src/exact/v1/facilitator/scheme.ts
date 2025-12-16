@@ -1,4 +1,5 @@
 import {
+  Network,
   PaymentPayload,
   PaymentRequirements,
   SchemeNetworkFacilitator,
@@ -17,6 +18,8 @@ import { ExactConcordiumPayloadV1 } from "../../../types";
  */
 export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
   readonly scheme = "exact";
+  /** Concordium CAIP family */
+  readonly caipFamily = "ccd:*";
   private readonly config: Required<ExactConcordiumSchemeConfig>;
 
   constructor(config: ExactConcordiumSchemeConfig) {
@@ -27,8 +30,13 @@ export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
     };
   }
 
-  getExtra(_: string): Record<string, unknown> | undefined {
+  getExtra(_: Network): Record<string, unknown> | undefined {
     return undefined;
+  }
+
+  /** V1 facilitator does not sign/pay; return empty signer list. */
+  getSigners(_: string): string[] {
+    return [];
   }
 
   async verify(

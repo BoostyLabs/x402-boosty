@@ -251,7 +251,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     return smallest.toString();
   }
 
-  private isAssetAmount(price: Price): price is { amount: string; asset?: string; extra?: Record<string, unknown> } {
+  private isAssetAmount(price: Price): price is AssetAmount {
     return typeof price === "object" && price !== null && "amount" in price;
   }
 
