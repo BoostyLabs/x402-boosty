@@ -1,11 +1,9 @@
 /**
  * Concordium Client for x402 facilitator.
  *
- * Methods:
- * - getTransactionStatus(txHash)
- * - waitForFinalization(txHash)
- * - verifyPayment(txHash, expected)
- * - invokeContract(contract, method, params)
+ * Supports:
+ * - Native CCD transfers (transactionType: "transfer")
+ * - PLT token transfers (transactionType: "tokenUpdate")
  */
 
 import { ConcordiumGRPCNodeClient, credentials } from "@concordium/web-sdk/nodejs";
@@ -18,12 +16,6 @@ import {
 
 import { getChainConfig } from "../config";
 
-export enum TransactionStatusEnum {
-  Received = "received",
-  Finalized = "finalized",
-  Committed = "committed",
-}
-
 export type TransactionStatus = "pending" | "committed" | "finalized" | "failed";
 
 export interface TransactionInfo {
@@ -32,16 +24,13 @@ export interface TransactionInfo {
   sender: string;
   recipient?: string;
   amount?: string;
-  contractIndex?: bigint;
-  contractSubindex?: bigint;
-  error?: string;
+  asset?: string; // "" for CCD, token symbol for PLT (e.g., "EURR")
 }
 
 export interface ConcordiumClientConfig {
   host: string;
   port?: number;
   useTls?: boolean;
-  timeoutMs?: number;
 }
 
 export interface ContractAddress {
@@ -51,7 +40,7 @@ export interface ContractAddress {
 
 export interface PaymentVerification {
   valid: boolean;
-  reason?: "not_found" | "pending" | "failed" | "recipient_mismatch" | "insufficient_amount";
+  reason?: "not_found" | "pending" | "failed" | "recipient_mismatch" | "insufficient_amount" | "asset_mismatch";
   info?: TransactionInfo;
 }
 
@@ -71,7 +60,6 @@ export class ConcordiumClient {
       host: config.host,
       port: config.port ?? 20000,
       useTls: config.useTls ?? true,
-      timeoutMs: config.timeoutMs ?? 30000,
     };
   }
 
@@ -93,56 +81,68 @@ export class ConcordiumClient {
   }
 
   /**
-   *
-   * @param txHash
+   * Get transaction status and details.
+   * Supports both CCD transfers and PLT token transfers.
    */
-  async getTransactionStatus(txHash: string): Promise<TransactionInfo> {
+  async getTransactionStatus(txHash: string): Promise<TransactionInfo | null> {
     const client = this.getClient();
-    const hash = TransactionHash.fromHexString(txHash);
 
-    const blockStatus = await client.getBlockItemStatus(hash);
+    try {
+      const hash = TransactionHash.fromHexString(txHash);
+      const blockStatus = await client.getBlockItemStatus(hash);
 
-    if (!blockStatus) {
-      return {
-        txHash,
-        status: "pending",
-        sender: "",
-        recipient: "",
-        amount: "",
-      };
+      if (!blockStatus) {
+        return null;
+      }
+
+      const status = this.mapStatus(blockStatus.status);
+      const summary = (blockStatus as any).outcome?.summary;
+
+      if (!summary) {
+        return { txHash, status, sender: "" };
+      }
+
+      const sender = summary.sender ?? "";
+      const transactionType = summary.transactionType;
+
+      // CCD transfer
+      if (transactionType === "transfer" && summary.transfer) {
+        return {
+          txHash,
+          status,
+          sender,
+          recipient: summary.transfer.to,
+          amount: summary.transfer.amount?.toString(),
+          asset: "", // Native CCD
+        };
+      }
+
+      // PLT token transfer
+      if (transactionType === "tokenUpdate" && summary.events?.length > 0) {
+        const transferEvent = summary.events.find(
+          (e: any) => e.tag === "TokenTransfer",
+        );
+
+        if (transferEvent) {
+          return {
+            txHash,
+            status,
+            sender,
+            recipient: transferEvent.to?.address,
+            amount: transferEvent.amount?.value?.toString(),
+            asset: transferEvent.tokenId,
+          };
+        }
+      }
+
+      return { txHash, status, sender };
+    } catch {
+      return null;
     }
-
-    const s = blockStatus as Record<string, any>;
-
-    const sender = s.outcome?.summary?.sender?.address ?? "";
-    const recipient = s.outcome?.summary?.transfer?.to?.address ?? "";
-    const amount = s.outcome?.summary?.transfer?.amount?.microCcdAmount?.toString() ?? "";
-
-    let status: TransactionStatus;
-    switch (blockStatus.status) {
-      case TransactionStatusEnum.Finalized:
-        status = "finalized";
-        break;
-      case TransactionStatusEnum.Committed:
-        status = "committed";
-        break;
-      case TransactionStatusEnum.Received:
-      default:
-        status = "pending";
-        break;
-    }
-
-    return {
-      txHash,
-      status,
-      sender,
-      recipient,
-      amount,
-    };
   }
 
   /**
-   *
+   * Wait for transaction finalization.
    * @param txHash
    * @param timeoutMs
    */
@@ -175,7 +175,7 @@ export class ConcordiumClient {
    */
   async verifyPayment(
     txHash: string,
-    expected: { recipient: string; minAmount: bigint },
+    expected: { recipient: string; minAmount: bigint; asset?: string },
   ): Promise<PaymentVerification> {
     const info = await this.getTransactionStatus(txHash);
 
@@ -191,12 +191,18 @@ export class ConcordiumClient {
       return { valid: false, reason: "pending", info };
     }
 
-    if (!info.recipient || info.recipient !== expected.recipient) {
+    if (!info.recipient || !this.addressEquals(info.recipient, expected.recipient)) {
       return { valid: false, reason: "recipient_mismatch", info };
     }
 
     if (BigInt(info.amount ?? "0") < expected.minAmount) {
       return { valid: false, reason: "insufficient_amount", info };
+    }
+
+    const expectedAsset = expected.asset ?? "";
+    const actualAsset = info.asset ?? "";
+    if (expectedAsset !== actualAsset) {
+      return { valid: false, reason: "asset_mismatch", info };
     }
 
     return { valid: true, info };
@@ -240,7 +246,7 @@ export class ConcordiumClient {
   }
 
   /**
-   *
+   * Closing connection to gRPC node
    */
   close(): void {
     this.client?.close?.();
@@ -248,7 +254,7 @@ export class ConcordiumClient {
   }
 
   /**
-   *
+   * Get gRPC client instance
    */
   private getClient(): ConcordiumGRPCNodeClient {
     if (!this.client) {
@@ -264,5 +270,26 @@ export class ConcordiumClient {
     }
 
     return this.client;
+  }
+
+  /**
+   * Map tx status
+   */
+  private mapStatus(status: string): TransactionStatus {
+    switch (status) {
+      case "finalized":
+        return "finalized";
+      case "committed":
+        return "committed";
+      default:
+        return "pending";
+    }
+  }
+
+  /**
+   * Helper
+   */
+  private addressEquals(a: string, b: string): boolean {
+    return a.toLowerCase() === b.toLowerCase();
   }
 }

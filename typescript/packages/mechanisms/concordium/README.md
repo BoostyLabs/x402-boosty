@@ -26,6 +26,14 @@ Unlike EVM which uses EIP-3009 TransferWithAuthorization (signed off-chain, exec
 
 This means **no signatures in payload** - the transaction is already on-chain when verified.
 
+## Supported Assets
+
+| Type | Symbol | Description | Decimals |
+|------|--------|-------------|----------|
+| Native | CCD | Native Concordium token | 6 |
+| PLT | USDR, EURR, etc. | PLT standard tokens | 6 |
+
+
 ## Package Exports
 
 ### Main Package (`@x402/concordium`)
@@ -38,13 +46,11 @@ This means **no signatures in payload** - the transaction is already on-chain wh
 
 **Facilitator:**
 - `ExactConcordiumScheme` - V2 facilitator for payment verification
-- `ConcordiumNodeClient` - Interface for Concordium node operations
+- `ConcordiumClient` - Interface for Concordium node operations
 - `ConcordiumTransactionInfo` - Transaction details type
 
 **Server:**
 - `ExactConcordiumScheme` - V2 server for building payment requirements
-- `ConcordiumAssetInfo` - Asset configuration type
-- `CCD_NATIVE` - Native CCD asset constant
 
 ### Subpath Exports
 ```typescript
@@ -56,12 +62,10 @@ import { ExactConcordiumScheme, registerExactConcordiumScheme } from "@x402/conc
 
 // Facilitator
 import { ExactConcordiumScheme, registerExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
+import { ConcordiumClient } from "@x402/concordium/client";
 
 // Config
 import { getChainConfig, CONCORDIUM_CHAINS } from "@x402/concordium/config";
-
-// Utilities
-import { createConcordiumNodeClient, createMockConcordiumNodeClient } from "@x402/concordium/utils";
 ```
 
 ### V1 Package (Legacy)
@@ -111,20 +115,8 @@ const concordiumScheme = new ExactConcordiumScheme();
 
 // Register CIS-2 tokens (optional - native CCD works by default)
 concordiumScheme
-  .registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EUROe", {
-    contractIndex: "9390",
-    contractSubindex: "0",
-    tokenId: "",
-    name: "EUROe Stablecoin",
-    decimals: 6,
-  })
-  .registerAsset("ccd:4221332d34e1694168c2a0c0b3fd0f27", "TestUSD", {
-    contractIndex: "7260",
-    contractSubindex: "0",
-    tokenId: "111111",
-    name: "PLT",
-    decimals: 6,
-  });
+  .registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EURR", 6)
+  .registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "USDR", 6)
 
 // Define routes
 const routes = {
@@ -153,29 +145,16 @@ const routes = {
     mimeType: "application/json",
   },
 
-  // Stablecoin payment (registered asset)
+  // PLT token payment (registered asset)
   "GET /api/premium": {
     accepts: {
       scheme: "exact",
       network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
       payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
       price: "5.00",
-      extra: { asset: "EUROe" },
+      extra: { asset: "USDR" },
     },
-    description: "Premium endpoint - 5 EUROe",
-    mimeType: "application/json",
-  },
-
-  // Testnet endpoint
-  "GET /api/test": {
-    accepts: {
-      scheme: "exact",
-      network: "concordium-testnet", // V1 network name also works
-      payTo: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
-      price: "10",
-      extra: { asset: "PLT" },
-    },
-    description: "Test endpoint",
+    description: "Premium endpoint - 5 USDR",
     mimeType: "application/json",
   },
 };
@@ -195,19 +174,20 @@ await server.initialize();
 ```typescript
 import { x402Facilitator } from "@x402/core/facilitator";
 import { registerExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
-import { createConcordiumNodeClient } from "@x402/concordium/utils";
+import { ConcordiumClient } from "@x402/concordium/client";
 
-// Create node client from gRPC client
-const nodeClient = createConcordiumNodeClient(grpcClient);
+const client = ConcordiumClient.fromNetwork("concordium-mainnet");
 
-// Create facilitator
 const facilitator = new x402Facilitator();
 
-registerExactConcordiumScheme(facilitator, {
-  nodeClient,
-  requireFinalization: true,    // Wait for finalization (default: true)
-  finalizationTimeoutMs: 60000, // 60 second timeout (default)
+const scheme = new ExactConcordiumScheme({
+  client,
+  supportedAssets: CONCORDIUM_ASSETS,
+  requireFinalization: true,
+  finalizationTimeoutMs: 60000,
 });
+
+facilitator.registerScheme("ccd:*", scheme);
 ```
 
 ### 4. Direct Registration (Full Control)
@@ -251,38 +231,21 @@ Default when no `extra.asset` specified:
   price: "1.0",  // 1 CCD
   // No extra.asset = native CCD
 }
-
-// Or explicit:
-{
-  price: "1.0",
-  extra: { asset: "CCD" },
-}
 ```
 
-- Asset string: `""` (empty)
-- Decimals: 6 (microCCD)
-
-### CIS-2 Tokens
+### PLT Tokens
 
 Register tokens, then reference by symbol:
 ```typescript
-// 1. Register the asset
-scheme.registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EUROe", {
-  contractIndex: "9390",
-  contractSubindex: "0",
-  tokenId: "",
-  name: "EUROe Stablecoin",
-  decimals: 6,
-});
+// Server: Register asset
+scheme.registerAsset("ccd:*", "USDR", 6);
 
-// 2. Use in route config
+// Route config: Use by symbol
 {
-  price: "5.00",
-  extra: { asset: "EUROe" },
+  price: "10",
+  extra: { asset: "USDR" },
 }
 ```
-
-- Asset string: `"contractIndex:subindex:tokenId"` (e.g., `"9390:0:"`)
 
 ### Asset Resolution Rules
 
@@ -296,6 +259,21 @@ scheme.registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EUROe", {
 
 **Note:** USD prices (`$`) are not supported. Use explicit asset symbols.
 
+## Amount Utilities
+```typescript
+import { toSmallestUnits, fromSmallestUnits } from "@x402/concordium/exact/server";
+
+// Convert human-readable to smallest units
+toSmallestUnits("10", 6);      // "10000000"
+toSmallestUnits("10.5", 6);    // "10500000"
+toSmallestUnits("0.000001", 6); // "1"
+
+// Convert smallest units to human-readable
+fromSmallestUnits("10000000", 6);  // "10"
+fromSmallestUnits("10500000", 6);  // "10.5"
+fromSmallestUnits("1", 6);         // "0.000001"
+```
+
 ## Payment Flow
 ```
 ┌─────────┐         ┌─────────┐         ┌─────────────┐         ┌───────────┐
@@ -308,11 +286,11 @@ scheme.registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EUROe", {
      │ 402 + PaymentReq  │                     │                      │
      │<──────────────────│                     │                      │
      │                   │                     │                      │
-     │ Broadcast Tx      │                     │                      │
-     │────────────────────────────────────────────────────────────────>│
+     │ Broadcast Tx (CCD or PLT)               │                      │
+     │───────────────────────────────────────────────────────────────>│
      │                   │                     │                      │
      │ txHash            │                     │                      │
-     │<────────────────────────────────────────────────────────────────│
+     │<───────────────────────────────────────────────────────────────│
      │                   │                     │                      │
      │ GET /resource + X-PAYMENT (txHash)      │                      │
      │──────────────────>│                     │                      │
@@ -332,77 +310,61 @@ scheme.registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EUROe", {
 
 ## API Reference
 
-### ConcordiumAssetInfo
+### ConcordiumClient
 ```typescript
-interface ConcordiumAssetInfo {
-  contractIndex: string;    // Empty string for native CCD
-  contractSubindex: string;
-  tokenId: string;
-  name: string;
-  decimals: number;
-}
+import { ConcordiumClient } from "@x402/concordium/client";
+
+const client = ConcordiumClient.fromNetwork("concordium-mainnet");
+// or
+const client = new ConcordiumClient({
+  host: "grpc.mainnet.concordium.com",
+  port: 20000,
+  useTls: true,
+});
+
+// Methods
+await client.getTransactionStatus(txHash);
+await client.waitForFinalization(txHash, timeoutMs);
+await client.verifyPayment(txHash, { recipient, minAmount });
+await client.invokeContract(contract, method, params);
+client.close();
 ```
 
 ### ExactConcordiumScheme (Server)
 ```typescript
-class ExactConcordiumScheme {
-  // Register a CIS-2 token
-  registerAsset(
-    network: Network,
-    symbol: string,
-    asset: ConcordiumAssetInfo,
-  ): this;
+import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 
-  // Get registered asset
-  getAsset(network: Network, symbol: string): ConcordiumAssetInfo | undefined;
+const scheme = new ExactConcordiumScheme();
 
-  // Parse price with extra.asset support
-  parsePriceWithExtra(
-    price: Price,
-    network: Network,
-    extra?: Record<string, unknown>,
-  ): AssetAmount;
-}
+// Register PLT token
+scheme.registerAsset(network, symbol, decimals);
+
+// Get registered asset
+scheme.getAsset(network, symbol);
+
+// Get all supported assets
+scheme.getSupportedAssets(network);
+
+// Parse price with extra.asset
+scheme.parsePriceWithExtra(price, network, extra);
 ```
 
-### ExactConcordiumSchemeConfig (Client)
+### ExactConcordiumScheme (Facilitator)
 ```typescript
-interface ExactConcordiumSchemeConfig {
-  createAndBroadcastTransaction: (
-    payTo: string,
-    amount: string,
-    asset: string,
-  ) => Promise<{ txHash: string; sender: string; blockHash?: string }>;
-}
-```
+import { ExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
 
-### ConcordiumNodeClient
-```typescript
-interface ConcordiumNodeClient {
-  getTransactionStatus(txHash: string): Promise<ConcordiumTransactionInfo | null>;
-  waitForFinalization(txHash: string, timeoutMs?: number): Promise<ConcordiumTransactionInfo | null>;
-}
+const scheme = new ExactConcordiumScheme({
+  client: ConcordiumClient,
+  requireFinalization?: boolean,   // default: true
+  finalizationTimeoutMs?: number,  // default: 60000
+  supportedAssets?: Array,
+});
 
-interface ConcordiumTransactionInfo {
-  txHash: string;
-  blockHash: string;
-  status: "pending" | "committed" | "finalized" | "failed";
-  sender: string;
-  recipient?: string;
-  amount?: string;
-  asset?: string;
-  error?: string;
-}
-```
-
-### ConcordiumFacilitatorConfig
-```typescript
-interface ConcordiumFacilitatorConfig {
-  nodeClient: ConcordiumNodeClient;
-  requireFinalization?: boolean;  // default: true
-  finalizationTimeoutMs?: number; // default: 60000
-  networks?: Network[];           // default: wildcard "ccd:*"
-}
+// Methods (called by facilitator)
+scheme.getExtra(network);           // Returns { assets: [...] }
+scheme.getSigners(network);         // Returns []
+await scheme.verify(payload, requirements);
+await scheme.settle(payload, requirements);
 ```
 
 ## Chain Configuration
@@ -422,22 +384,55 @@ const config = getChainConfig("concordium-testnet");
 // }
 ```
 
-## Error Handling
+### Types
+```typescript
+// Asset configuration
+interface AssetConfig {
+  symbol: string;
+  decimals: number;
+}
 
-The server scheme throws clear errors:
+// Transaction info from client
+interface TransactionInfo {
+  txHash: string;
+  status: "pending" | "committed" | "finalized" | "failed";
+  sender: string;
+  recipient?: string;
+  amount?: string;
+}
+
+// Payment payload (V2)
+interface ExactConcordiumPayloadV2 {
+  txHash: string;
+  sender: string;
+  asset?: string;  // "" for CCD, "USDR" for PLT
+}
+```
+
+## Error Handling
 ```typescript
 // Unknown asset
-ConcordiumAssetError: Unknown asset "UNKNOWN" on ccd:9dd9ca4d...
-  Registered: CCD, EUROe. Use registerAsset() to add.
+Error: Unknown asset "UNKNOWN". Registered: CCD, USDR, EURR
 
-// USD price not supported  
-Error: USD prices not supported. Use explicit asset in extra.asset. Got: $1.00
+// USD price not supported
+Error: USD prices not supported. Got: $1.00
 
-// Invalid price
-ConcordiumAssetError: Invalid price: abc
+// Invalid amount
+Error: Invalid amount: abc
 
-// Invalid extra.asset type
-Error: extra.asset must be a string symbol. Got: object
+// Transaction errors (facilitator)
+// - missing_tx_hash
+// - missing_sender
+// - transaction_not_found
+// - transaction_failed
+// - transaction_pending
+// - transaction_not_finalized
+// - sender_mismatch
+// - recipient_mismatch
+// - insufficient_amount
+// - asset_mismatch
+// - finalization_timeout
+// - finalization_failed
 ```
 
 ## Development
@@ -456,29 +451,33 @@ npm run format
 ## File Structure
 ```
 @x402/concordium/
-├── index.ts                 # Main exports
-├── types.ts                 # Core types
+├── index.ts
+├── types.ts
+├── client/
+│   ├── concordium.client.ts
+│   └── index.ts
 ├── config/
-│   ├── chains.ts           # Network configurations
-│   └── tokens.ts           # Token registry
+│   ├── chains.ts
+│   ├── tokens.ts
+│   └── index.ts
 ├── exact/
-│   ├── client/
-│   │   ├── scheme.ts       # Client implementation
-│   │   └── register.ts     # Registration helper
+|   ├── client/
+│   │   ├── scheme.ts
+│   │   └── index.ts
 │   ├── server/
-│   │   ├── scheme.ts       # Server implementation (asset registration)
-│   │   └── register.ts     # Registration helper
+│   │   ├── scheme.ts      # Price parsing, asset registration
+│   │   └── index.ts
 │   ├── facilitator/
-│   │   ├── scheme.ts       # Facilitator implementation
-│   │   └── register.ts     # Registration helper
-│   └── v1/                 # V1 legacy support
+│   │   ├── scheme.ts      # Transaction verification
+│   │   └── index.ts
+│   └── v1/
+│       └── facilitator/
+│           ├── scheme.ts  # V1 legacy support
+│           └── index.ts
 └── utils/
-    └── node-client.ts      # Node client utilities
 ```
 
 ## Related Packages
 
 - `@x402/core` - Core protocol types and client
 - `@x402/fetch` - HTTP wrapper with automatic payment handling
-- `@x402/evm` - EVM/Ethereum implementation
-- `@x402/svm` - Solana/SVM implementation

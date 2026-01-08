@@ -9,16 +9,11 @@ import {
 /**
  * Concordium asset information
  */
+export type AssetType = "native" | "plt";
+
 export interface ConcordiumAssetInfo {
-  /** Contract index (empty string for native CCD) */
-  contractIndex: string;
-  /** Contract subindex */
-  contractSubindex: string;
-  /** Token ID */
-  tokenId: string;
-  /** Human-readable name */
-  name: string;
-  /** Number of decimals */
+  type: AssetType;
+  symbol: string;
   decimals: number;
 }
 
@@ -26,25 +21,17 @@ export interface ConcordiumAssetInfo {
  * Native CCD asset
  */
 export const CCD_NATIVE: ConcordiumAssetInfo = {
-  contractIndex: "",
-  contractSubindex: "",
-  tokenId: "",
-  name: "CCD",
+  type: "native",
+  symbol: "CCD",
   decimals: 6,
 };
 
 /**
  * Concordium server scheme for exact payments.
  *
- * Asset resolution (strict order):
- * 1. extra.asset (string symbol) -> lookup in registered assets
- * 2. No extra.asset -> native CCD
- *
- * Price formats:
- * - Number: 1.5 (uses resolved asset decimals)
- * - String: "1.5" (uses resolved asset decimals)
- *
- * USD prices ($) are NOT supported - use explicit asset.
+ * Supports:
+ * - Native CCD (type: "native")
+ * - PLT tokens (type: "plt")
  */
 export class ExactConcordiumScheme implements SchemeNetworkServer {
   readonly scheme = "exact";
@@ -56,23 +43,21 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * Register an asset for a network.
    *
    * @param network - Network identifier (e.g., "ccd:9dd9ca4d..." or "ccd:*")
-   * @param symbol - Asset symbol (e.g., "EUROe", "USDC")
-   * @param asset - Asset information
+   * @param symbol - Asset symbol (e.g., "EURR", "USDC")
+   * @param decimals - Decimals
    *
    * @example
    * ```typescript
-   * scheme.registerAsset('ccd:9dd9ca4d19e9393877d2c44b70f89acb', 'EUROe', {
-   *   contractIndex: '9390',
-   *   contractSubindex: '0',
-   *   tokenId: '',
-   *   name: 'EUROe Stablecoin',
-   *   decimals: 6,
-   * });
+   * scheme.registerAsset('ccd:9dd9ca4d19e9393877d2c44b70f89acb', 'EURR', 6);
    * ```
    */
-  registerAsset(network: Network, symbol: string, asset: ConcordiumAssetInfo): this {
-    const key = this.assetKey(network, symbol);
-    this.assets.set(key, asset);
+  registerAsset(network: Network, symbol: string, decimals: number): this {
+    const asset: ConcordiumAssetInfo = {
+      type: "plt",
+      symbol: symbol.toUpperCase(),
+      decimals,
+    };
+    this.assets.set(this.assetKey(network, symbol), asset);
     return this;
   }
 
@@ -83,12 +68,37 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * @param symbol
    */
   getAsset(network: Network, symbol: string): ConcordiumAssetInfo | undefined {
-    // Try exact network match
     const exact = this.assets.get(this.assetKey(network, symbol));
     if (exact) return exact;
 
-    // Try wildcard
     return this.assets.get(this.assetKey("ccd:*", symbol));
+  }
+
+  /**
+   * Get all supported assets for a network.
+   * Always includes native CCD.
+   */
+  getSupportedAssets(network: Network): ConcordiumAssetInfo[] {
+    const assets: ConcordiumAssetInfo[] = [CCD_NATIVE];
+
+    for (const [key, asset] of this.assets.entries()) {
+      if (key.startsWith(`${network}:`) || key.startsWith("ccd:*:")) {
+        // Avoid duplicates
+        if (!assets.some((a) => a.symbol === asset.symbol)) {
+          assets.push(asset);
+        }
+      }
+    }
+
+    return assets;
+  }
+
+  /**
+   * Get supported asset symbols for a network.
+   * Always includes "CCD".
+   */
+  getSupportedSymbols(network: Network): string[] {
+    return this.getSupportedAssets(network).map((a) => a.symbol);
   }
 
   /**
@@ -98,7 +108,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * @param network
    */
   async parsePrice(price: Price, network: Network): Promise<AssetAmount> {
-    // Already AssetAmount - pass through
     if (this.isAssetAmount(price)) {
       this.validateAssetAmount(price);
       return {
@@ -108,18 +117,16 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       };
     }
 
-    // Reject USD prices
     if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(`USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`);
+      throw new Error(`USD prices not supported. Got: ${price}`);
     }
 
-    // Default to CCD (extra.asset handled in parseWithExtra)
     const amount = this.toSmallestUnits(price, CCD_NATIVE.decimals);
 
     return {
       amount,
       asset: "",
-      extra: { name: "CCD", decimals: 6 },
+      extra: { type: "native", symbol: "CCD", decimals: 6 },
     };
   }
 
@@ -136,7 +143,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     network: Network,
     extra?: Record<string, unknown>,
   ): AssetAmount {
-    // Already AssetAmount
     if (this.isAssetAmount(price)) {
       this.validateAssetAmount(price);
       return {
@@ -146,33 +152,20 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       };
     }
 
-    // Reject USD prices
     if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(`USD prices not supported. Use explicit asset in extra.asset. Got: ${price}`);
+      throw new Error(`USD prices not supported. Got: ${price}`);
     }
 
-    // Resolve asset
     const asset = this.resolveAsset(network, extra);
-
-    // Convert price
     const amount = this.toSmallestUnits(price, asset.decimals);
-
-    // Build asset string
-    const assetString = asset.contractIndex
-      ? `${asset.contractIndex}:${asset.contractSubindex}:${asset.tokenId}`
-      : "";
 
     return {
       amount,
-      asset: assetString,
+      asset: asset.type === "native" ? "" : asset.symbol,
       extra: {
-        name: asset.name,
+        type: asset.type,
+        symbol: asset.symbol,
         decimals: asset.decimals,
-        ...(asset.contractIndex && {
-          contractIndex: asset.contractIndex,
-          contractSubindex: asset.contractSubindex,
-          tokenId: asset.tokenId,
-        }),
       },
     };
   }
@@ -216,30 +209,26 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * @param extra
    */
   private resolveAsset(network: Network, extra?: Record<string, unknown>): ConcordiumAssetInfo {
-    // No extra.asset -> native CCD
     if (!extra?.asset) {
       return CCD_NATIVE;
     }
 
     const symbol = extra.asset;
 
-    // Must be string symbol
     if (typeof symbol !== "string") {
       throw new Error(`extra.asset must be a string symbol. Got: ${typeof symbol}`);
     }
 
-    // Native CCD
     if (symbol.toUpperCase() === "CCD") {
       return CCD_NATIVE;
     }
 
-    // Lookup registered asset
     const asset = this.getAsset(network, symbol);
     if (!asset) {
-      const registered = this.listRegisteredSymbols(network);
+      const supported = this.getSupportedSymbols(network);
       throw new Error(
         `Unknown asset "${symbol}" on ${network}. ` +
-          `Registered: CCD${registered.length ? ", " + registered.join(", ") : ""}. ` +
+          `Registered: CCD${supported.length ? ", " + supported.join(", ") : ""}. ` +
           `Use registerAsset() to add.`,
       );
     }
@@ -248,36 +237,50 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   }
 
   /**
+   * Convert human-readable amount to the smallest units.
    *
-   * @param network
+   * @example
+   * toSmallestUnits("10", 6) // "10000000"
+   * toSmallestUnits("10.5", 6) // "10500000"
+   * toSmallestUnits(10, 6) // "10000000"
    */
-  private listRegisteredSymbols(network: Network): string[] {
-    const symbols: string[] = [];
+  private toSmallestUnits(amount: string | number, decimals: number): string {
+    const str = String(amount).trim();
 
-    for (const key of this.assets.keys()) {
-      if (key.startsWith(`${network}:`) || key.startsWith("ccd:*:")) {
-        const symbol = key.split(":").pop();
-        if (symbol) symbols.push(symbol);
-      }
+    if (!/^\d+(\.\d+)?$/.test(str)) {
+      throw new Error(`Invalid amount: ${amount}`);
     }
 
-    return [...new Set(symbols)];
+    const [whole, fraction = ""] = str.split(".");
+    const paddedFraction = fraction.padEnd(decimals, "0").slice(0, decimals);
+
+    return (whole + paddedFraction).replace(/^0+/, "") || "0";
   }
 
   /**
+   * Convert the smallest units to human-readable amount.
    *
-   * @param price
-   * @param decimals
+   * @example
+   * fromSmallestUnits("10000000", 6) // "10"
+   * fromSmallestUnits("10500000", 6) // "10.5"
+   * fromSmallestUnits("1", 6) // "0.000001"
    */
-  private toSmallestUnits(price: string | number, decimals: number): string {
-    const value = typeof price === "string" ? parseFloat(price) : price;
+  private fromSmallestUnits(amount: string, decimals: number): string {
+    const str = String(amount).trim();
 
-    if (isNaN(value) || value < 0) {
-      throw new Error(`Invalid price: ${price}`);
+    if (!/^\d+$/.test(str)) {
+      throw new Error(`Invalid amount: ${amount}`);
     }
 
-    const smallest = Math.floor(value * Math.pow(10, decimals));
-    return smallest.toString();
+    if (str === "0" || decimals === 0) {
+      return str;
+    }
+
+    const padded = str.padStart(decimals + 1, "0");
+    const whole = padded.slice(0, -decimals).replace(/^0+/, "") || "0";
+    const fraction = padded.slice(-decimals).replace(/0+$/, "");
+
+    return fraction ? `${whole}.${fraction}` : whole;
   }
 
   /**
@@ -297,11 +300,8 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * @param price.asset
    */
   private validateAssetAmount(price: { amount: string; asset?: string }): void {
-    if (!price.amount || isNaN(Number(price.amount))) {
+    if (!price.amount || !/^\d+$/.test(price.amount)) {
       throw new Error(`Invalid amount: ${price.amount}`);
-    }
-    if (Number(price.amount) < 0) {
-      throw new Error(`Amount cannot be negative: ${price.amount}`);
     }
   }
 }

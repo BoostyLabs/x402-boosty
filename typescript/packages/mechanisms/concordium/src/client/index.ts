@@ -1,4 +1,4 @@
-export { ConcordiumClient, TransactionStatusEnum } from "./concordium.client";
+export { ConcordiumClient } from "./concordium.client";
 
 export type {
   ConcordiumClientConfig,

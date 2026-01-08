@@ -6,52 +6,8 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "@x402/core/types";
+import type { ConcordiumClient, TransactionInfo } from "../../client";
 import { ExactConcordiumPayloadV2 } from "../../types";
-
-/**
- * Interface for Concordium node/SDK client operations needed by the facilitator.
- * Implement this interface to connect to your Concordium node.
- */
-export interface ConcordiumNodeClient {
-  /**
-   * Get transaction status and details from the chain.
-   *
-   * @param txHash - The transaction hash to look up
-   * @returns Transaction details or null if not found
-   */
-  getTransactionStatus(txHash: string): Promise<ConcordiumTransactionInfo | null>;
-
-  /**
-   * Wait for a transaction to be finalized.
-   *
-   * @param txHash - The transaction hash to wait for
-   * @param timeoutMs - Maximum time to wait in milliseconds
-   * @returns Transaction info once finalized, or null if timeout/failed
-   */
-  waitForFinalization(txHash: string, timeoutMs?: number): Promise<ConcordiumTransactionInfo | null>;
-}
-
-/**
- * Transaction information returned from Concordium node
- */
-export interface ConcordiumTransactionInfo {
-  /** Transaction hash */
-  txHash: string;
-  /** Block hash where transaction was included */
-  blockHash: string;
-  /** Transaction status */
-  status: "pending" | "committed" | "finalized" | "failed";
-  /** Sender account address */
-  sender: string;
-  /** Recipient account address (for transfers) */
-  recipient?: string;
-  /** Amount transferred (in microCCD or token units) */
-  amount?: string;
-  /** Asset identifier (empty for native CCD) */
-  asset?: string;
-  /** Error message if failed */
-  error?: string;
-}
 
 /**
  * Configuration for the Concordium facilitator scheme
@@ -60,7 +16,7 @@ export interface ExactConcordiumSchemeConfig {
   /**
    * Concordium node client for verifying transactions
    */
-  nodeClient: ConcordiumNodeClient;
+  client: ConcordiumClient;
 
   /**
    * Whether to wait for transaction finalization before settling.
@@ -76,22 +32,24 @@ export interface ExactConcordiumSchemeConfig {
    * @default 60000 (60 seconds)
    */
   finalizationTimeoutMs?: number;
+
+  /**
+   * Supported assets (for /supported endpoint).
+   * If not provided, only CCD is reported.
+   */
+  supportedAssets?: Array<{ symbol: string; decimals: number }>;
 }
 
 /**
  * Concordium facilitator implementation for the Exact payment scheme.
- *
- * This implementation verifies that:
- * 1. The transaction exists on the Concordium chain
- * 2. The transaction is to the correct recipient
- * 3. The transaction amount is sufficient
- * 4. The transaction is finalized (or committed, based on config)
  */
 export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
   readonly scheme = "exact";
-  /** Concordium CAIP family */
-  readonly caipFamily = "ccd:*";
-  private readonly config: Required<ExactConcordiumSchemeConfig>;
+
+  private readonly client: ConcordiumClient;
+  private readonly requireFinalization: boolean;
+  private readonly finalizationTimeoutMs: number;
+  private readonly supportedAssets: Array<{ symbol: string; decimals: number }>;
 
   /**
    * Creates a new ExactConcordiumScheme instance for facilitator operations.
@@ -99,26 +57,23 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * @param config - Configuration with Concordium node client
    */
   constructor(config: ExactConcordiumSchemeConfig) {
-    this.config = {
-      nodeClient: config.nodeClient,
-      requireFinalization: config.requireFinalization ?? true,
-      finalizationTimeoutMs: config.finalizationTimeoutMs ?? 60000,
+    this.client = config.client;
+    this.requireFinalization = config.requireFinalization ?? true;
+    this.finalizationTimeoutMs = config.finalizationTimeoutMs ?? 60000;
+    this.supportedAssets = config.supportedAssets ?? [{ symbol: "CCD", decimals: 6 }];
+  }
+
+  /**
+   * Returns supported assets for /supported endpoint.
+   */
+  getExtra(_: Network): Record<string, unknown> | undefined {
+    return {
+      assets: this.supportedAssets,
     };
   }
 
   /**
-   * Get mechanism-specific extra data for the supported kinds endpoint.
-   * For Concordium, no extra data is needed.
-   *
-   * @param _ - The network identifier (unused)
-   * @returns undefined (Concordium has no extra data)
-   */
-  getExtra(_: Network): Record<string, unknown> | undefined {
-    return undefined;
-  }
-
-  /**
-   * Concordium facilitator does not act as payer; return empty signer list.
+   * Concordium client broadcasts directly; no facilitator signers.
    */
   getSigners(_: string): string[] {
     return [];
@@ -136,120 +91,77 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     requirements: PaymentRequirements,
   ): Promise<VerifyResponse> {
     const concordiumPayload = payload.payload as ExactConcordiumPayloadV2;
+    const payer = concordiumPayload.sender;
 
-    // Verify scheme matches
-    if (payload.accepted.scheme !== "exact" || requirements.scheme !== "exact") {
-      return {
-        isValid: false,
-        invalidReason: "unsupported_scheme",
-        payer: concordiumPayload.sender,
-      };
+    if (!concordiumPayload.txHash) {
+      return this.invalid("missing_tx_hash", payer);
     }
 
-    // Verify network matches
+    if (!concordiumPayload.sender) {
+      return this.invalid("missing_sender", payer);
+    }
+
+    if (payload.accepted.scheme !== "exact") {
+      return this.invalid("unsupported_scheme", payer);
+    }
+
+    if (!this.isConcordiumNetwork(payload.accepted.network)) {
+      return this.invalid("unsupported_network", payer);
+    }
+
     if (payload.accepted.network !== requirements.network) {
-      return {
-        isValid: false,
-        invalidReason: "network_mismatch",
-        payer: concordiumPayload.sender,
-      };
+      return this.invalid("network_mismatch", payer);
     }
 
-    // Get transaction from the chain
-    let txInfo: ConcordiumTransactionInfo | null;
+    let txInfo: TransactionInfo | null;
     try {
-      txInfo = await this.config.nodeClient.getTransactionStatus(concordiumPayload.txHash);
-    } catch (error) {
-      return {
-        isValid: false,
-        invalidReason: "transaction_lookup_failed",
-        payer: concordiumPayload.sender,
-      };
+      txInfo = await this.client.getTransactionStatus(concordiumPayload.txHash);
+    } catch {
+      return this.invalid("transaction_lookup_failed", payer);
     }
 
     if (!txInfo) {
-      return {
-        isValid: false,
-        invalidReason: "transaction_not_found",
-        payer: concordiumPayload.sender,
-      };
+      return this.invalid("transaction_not_found", payer);
     }
 
-    // Verify transaction status
     if (txInfo.status === "failed") {
-      return {
-        isValid: false,
-        invalidReason: "transaction_failed",
-        payer: concordiumPayload.sender,
-      };
+      return this.invalid("transaction_failed", payer);
     }
 
     if (txInfo.status === "pending") {
-      return {
-        isValid: false,
-        invalidReason: "transaction_pending",
-        payer: concordiumPayload.sender,
-      };
+      return this.invalid("transaction_pending", payer);
     }
 
-    // Check finalization requirement
-    if (this.config.requireFinalization && txInfo.status !== "finalized") {
-      return {
-        isValid: false,
-        invalidReason: "transaction_not_finalized",
-        payer: concordiumPayload.sender,
-      };
+    if (this.requireFinalization && txInfo.status !== "finalized") {
+      return this.invalid("transaction_not_finalized", payer);
     }
 
-    // Verify sender matches
-    if (txInfo.sender && txInfo.sender.toLowerCase() !== concordiumPayload.sender.toLowerCase()) {
-      return {
-        isValid: false,
-        invalidReason: "sender_mismatch",
-        payer: concordiumPayload.sender,
-      };
+    if (txInfo.sender && !this.addressEquals(txInfo.sender, concordiumPayload.sender)) {
+      return this.invalid("sender_mismatch", payer);
     }
 
-    // Verify recipient matches
-    if (txInfo.recipient) {
-      if (txInfo.recipient.toLowerCase() !== requirements.payTo.toLowerCase()) {
-        return {
-          isValid: false,
-          invalidReason: "recipient_mismatch",
-          payer: concordiumPayload.sender,
-        };
-      }
+    if (!txInfo.recipient || !this.addressEquals(txInfo.recipient, requirements.payTo)) {
+      return this.invalid("recipient_mismatch", payer);
     }
 
-    // Verify amount is sufficient
-    if (txInfo.amount) {
-      if (BigInt(txInfo.amount) < BigInt(requirements.amount)) {
-        return {
-          isValid: false,
-          invalidReason: "insufficient_amount",
-          payer: concordiumPayload.sender,
-        };
-      }
+    const requiredAmount = this.getRequiredAmount(requirements);
+    const actualAmount = BigInt(txInfo.amount || "0");
+
+    if (actualAmount < requiredAmount) {
+      return this.invalid("insufficient_amount", payer);
     }
 
-    // Verify asset matches (if specified)
-    if (txInfo.asset !== undefined) {
-      const expectedAsset = requirements.asset || "";
-      const actualAsset = txInfo.asset || "";
-      if (expectedAsset !== actualAsset) {
-        return {
-          isValid: false,
-          invalidReason: "asset_mismatch",
-          payer: concordiumPayload.sender,
-        };
-      }
+    // Validate asset
+    // Native CCD: requirements.asset is "" or undefined
+    // PLT token: requirements.asset is symbol (e.g., "USDR")
+    const expectedAsset = requirements.asset || "";
+    const actualAsset = concordiumPayload.asset || "";
+
+    if (expectedAsset !== actualAsset) {
+      return this.invalid("asset_mismatch", payer);
     }
 
-    return {
-      isValid: true,
-      invalidReason: undefined,
-      payer: concordiumPayload.sender,
-    };
+    return { isValid: true, payer };
   }
 
   /**
@@ -268,54 +180,71 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     requirements: PaymentRequirements,
   ): Promise<SettleResponse> {
     const concordiumPayload = payload.payload as ExactConcordiumPayloadV2;
+    const network = payload.accepted.network;
+    const txHash = concordiumPayload.txHash;
+    const payer = concordiumPayload.sender;
 
-    // First verify the payment
     const verifyResult = await this.verify(payload, requirements);
+
     if (!verifyResult.isValid) {
       return {
         success: false,
-        network: payload.accepted.network,
-        transaction: concordiumPayload.txHash,
-        errorReason: verifyResult.invalidReason ?? "invalid_payment",
-        payer: concordiumPayload.sender,
+        network,
+        transaction: txHash,
+        payer,
+        errorReason: verifyResult.invalidReason,
       };
     }
 
-    // If we require finalization and haven't verified it yet, wait for it
-    if (this.config.requireFinalization) {
+    if (this.requireFinalization) {
       try {
-        const finalizedTx = await this.config.nodeClient.waitForFinalization(
-          concordiumPayload.txHash,
-          this.config.finalizationTimeoutMs,
+        const finalizedTx = await this.client.waitForFinalization(
+          txHash,
+          this.finalizationTimeoutMs,
         );
 
         if (!finalizedTx || finalizedTx.status !== "finalized") {
           return {
             success: false,
-            network: payload.accepted.network,
-            transaction: concordiumPayload.txHash,
+            network,
+            transaction: txHash,
+            payer,
             errorReason: "finalization_timeout",
-            payer: concordiumPayload.sender,
           };
         }
       } catch (error) {
-        console.error("Failed to wait for finalization:", error);
         return {
           success: false,
-          network: payload.accepted.network,
-          transaction: concordiumPayload.txHash,
+          network,
+          transaction: txHash,
+          payer,
           errorReason: "finalization_failed",
-          payer: concordiumPayload.sender,
         };
       }
     }
 
-    // Transaction is verified and finalized (or committed if not requiring finalization)
     return {
       success: true,
-      network: payload.accepted.network,
-      transaction: concordiumPayload.txHash,
-      payer: concordiumPayload.sender,
+      network,
+      transaction: txHash,
+      payer,
     };
+  }
+
+  private invalid(reason: string, payer: string): VerifyResponse {
+    return { isValid: false, invalidReason: reason, payer };
+  }
+
+  private isConcordiumNetwork(network: string): boolean {
+    return network.startsWith("ccd:");
+  }
+
+  private addressEquals(a: string, b: string): boolean {
+    return a.toLowerCase() === b.toLowerCase();
+  }
+
+  private getRequiredAmount(requirements: PaymentRequirements): bigint {
+    const amount = (requirements as any).maxAmountRequired || (requirements as any).amount || "0";
+    return BigInt(amount);
   }
 }

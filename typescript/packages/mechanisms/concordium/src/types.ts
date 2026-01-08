@@ -25,6 +25,9 @@ export interface ExactConcordiumPayloadV2 extends Record<string, unknown> {
    */
   sender: string;
 
+  /** Asset symbol (empty for CCD, "USDR" for PLT) */
+  asset?: string;
+
   /**
    * Optional: Block hash where the transaction was included (for faster verification)
    */
