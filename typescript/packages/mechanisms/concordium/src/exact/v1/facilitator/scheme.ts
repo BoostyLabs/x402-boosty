@@ -41,6 +41,8 @@ export interface ExactConcordiumSchemeV1Config {
 export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
   readonly scheme = "exact";
 
+  readonly caipFamily = "ccd:*";
+
   private readonly client: ConcordiumClient;
   private readonly requireFinalization: boolean;
   private readonly finalizationTimeoutMs: number;
