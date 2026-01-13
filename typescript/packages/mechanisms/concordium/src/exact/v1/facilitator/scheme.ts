@@ -81,7 +81,7 @@ export class ExactConcordiumSchemeV1 implements SchemeNetworkFacilitator {
     const ccdPayload = payloadV1.payload as ExactConcordiumPayloadV1;
     const payer = ccdPayload.sender;
 
-    if (!payloadV1.txHash) {
+    if (!ccdPayload.txHash) {
       return this.invalid("missing_tx_hash", payer);
     }
 
