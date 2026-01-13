@@ -227,7 +227,7 @@ export class ConcordiumClient {
       const result = await client.invokeContract({
         contract: address,
         method: ReceiveName.fromString(method),
-        parameter: params ? Parameter.fromBuffer(params) : undefined,
+        parameter: params ? Parameter.fromBuffer(new Uint8Array(params).buffer as ArrayBuffer) : undefined,
       });
 
       if (result.tag === "failure") {
@@ -243,14 +243,6 @@ export class ConcordiumClient {
     } catch (error) {
       return { success: false, error: String(error) };
     }
-  }
-
-  /**
-   * Closing connection to gRPC node
-   */
-  close(): void {
-    this.client?.close?.();
-    this.client = null;
   }
 
   /**
