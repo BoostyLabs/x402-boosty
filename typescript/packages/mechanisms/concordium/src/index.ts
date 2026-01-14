@@ -72,5 +72,9 @@
 // Export V2 implementations (default)
 export { ExactConcordiumScheme } from "./exact";
 
+export { ConcordiumClient } from './client';
+
+export * from './config';
+
 // Main types
 export * from "./types";

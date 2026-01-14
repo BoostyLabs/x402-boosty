@@ -104,17 +104,13 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   /**
    * Parse price into AssetAmount.
    *
-   * @param price
-   * @param network
+   * Supports:
+   * - String/number: "10" or 10 -> CCD with decimals
+   * - AssetAmount: { amount: "10", asset: "EURR" } -> PLT without decimals
    */
   async parsePrice(price: Price, network: Network): Promise<AssetAmount> {
     if (this.isAssetAmount(price)) {
-      this.validateAssetAmount(price);
-      return {
-        amount: price.amount,
-        asset: price.asset || "",
-        extra: price.extra || {},
-      };
+      return this.parseAssetAmount(price, network);
     }
 
     if (typeof price === "string" && price.startsWith("$")) {
@@ -131,41 +127,38 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   }
 
   /**
-   * Parse price with extra metadata (called by your middleware).
-   * This is the main entry point that handles extra.asset.
-   *
-   * @param price
-   * @param network
-   * @param extra
+   * Parse custom asset amount
    */
-  parsePriceWithExtra(
-    price: Price,
-    network: Network,
-    extra?: Record<string, unknown>,
-  ): AssetAmount {
-    if (this.isAssetAmount(price)) {
-      this.validateAssetAmount(price);
+  private parseAssetAmount(price: AssetAmount, network: Network): AssetAmount {
+    const assetSymbol = price.asset || "";
+
+    if (!assetSymbol || assetSymbol.toUpperCase() === "CCD") {
+      const amount = this.toSmallestUnits(price.amount, CCD_NATIVE.decimals);
       return {
-        amount: price.amount,
-        asset: price.asset || "",
-        extra: price.extra || {},
+        amount,
+        asset: "",
+        extra: {
+          type: "native",
+          symbol: "CCD",
+          decimals: 6,
+          ...price.extra,
+        },
       };
     }
 
-    if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(`USD prices not supported. Got: ${price}`);
+    const asset = this.getAsset(network, assetSymbol);
+    if (!asset) {
+      throw new Error(`Unknown asset: ${assetSymbol}`);
     }
 
-    const asset = this.resolveAsset(network, extra);
-    const amount = this.toSmallestUnits(price, asset.decimals);
-
     return {
-      amount,
-      asset: asset.type === "native" ? "" : asset.symbol,
+      amount: this.toWholeUnits(price.amount),
+      asset: asset.symbol,
       extra: {
         type: asset.type,
         symbol: asset.symbol,
         decimals: asset.decimals,
+        ...price.extra,
       },
     };
   }
@@ -255,6 +248,23 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     const paddedFraction = fraction.padEnd(decimals, "0").slice(0, decimals);
 
     return (whole + paddedFraction).replace(/^0+/, "") || "0";
+  }
+
+  /**
+   * Convert to whole units (for PLT).
+   * 10 PLT -> 10 (no decimals)
+   */
+  private toWholeUnits(amount: string | number): string {
+    const str = String(amount).trim();
+
+    if (!/^\d+(\.\d+)?$/.test(str)) {
+      throw new Error(`Invalid amount: ${amount}`);
+    }
+
+    // Truncate any decimals
+    const [whole] = str.split(".");
+
+    return whole.replace(/^0+/, "") || "0";
   }
 
   /**
