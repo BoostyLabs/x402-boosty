@@ -2,7 +2,7 @@ import { x402Facilitator } from "@x402/core/facilitator";
 import { Network, SchemeNetworkFacilitator } from "@x402/core/types";
 import { ExactConcordiumScheme, ExactConcordiumSchemeConfig } from "./scheme";
 import { ExactConcordiumSchemeV1Facilitator } from "../v1";
-import { CONCORDIUM_V1_NETWORKS } from "../../types";
+import { CONCORDIUM_V1_NETWORKS } from "../../config";
 
 /**
  * Configuration options for registering Concordium schemes to an x402Facilitator
@@ -47,15 +47,10 @@ export function registerExactConcordiumScheme(
     finalizationTimeoutMs: config.finalizationTimeoutMs,
   });
 
-  // Register V2 scheme
-  if (config.networks && config.networks.length > 0) {
-    // Register specific networks
-    config.networks.forEach(network => {
-      facilitator.register(network, scheme);
-    });
-  } else {
-    // Register wildcard for all Concordium chains
-    facilitator.register("ccd:*", scheme);
+  // Register V2 (CAIP-2 format)
+  const v2Networks = config.networks?.length ? config.networks : ["ccd:*"];
+  for (const network of v2Networks) {
+    facilitator.register(network, scheme);
   }
 
   // Register all V1 networks

@@ -95,23 +95,11 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     const concordiumPayload = payload.payload as ExactConcordiumPayloadV2;
     const payer = concordiumPayload.sender;
 
-    if (!concordiumPayload.txHash) {
-      return this.invalid("missing_tx_hash", payer);
-    }
-
-    if (!concordiumPayload.sender) {
-      return this.invalid("missing_sender", payer);
-    }
-
-    if (payload.accepted.scheme !== "exact") {
-      return this.invalid("unsupported_scheme", payer);
-    }
-
-    if (!this.isConcordiumNetwork(payload.accepted.network)) {
+    if (!this.isConcordiumNetwork(payload.network)) {
       return this.invalid("unsupported_network", payer);
     }
 
-    if (payload.accepted.network !== requirements.network) {
+    if (payload.network !== requirements.network) {
       return this.invalid("network_mismatch", payer);
     }
 
@@ -128,18 +116,6 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
 
     if (txInfo.status === "failed") {
       return this.invalid("transaction_failed", payer);
-    }
-
-    if (txInfo.status === "pending") {
-      return this.invalid("transaction_pending", payer);
-    }
-
-    if (this.requireFinalization && txInfo.status !== "finalized") {
-      return this.invalid("transaction_not_finalized", payer);
-    }
-
-    if (txInfo.sender && !this.addressEquals(txInfo.sender, concordiumPayload.sender)) {
-      return this.invalid("sender_mismatch", payer);
     }
 
     if (!txInfo.recipient || !this.addressEquals(txInfo.recipient, requirements.payTo)) {
