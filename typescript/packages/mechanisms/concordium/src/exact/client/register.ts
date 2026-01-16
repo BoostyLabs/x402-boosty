@@ -2,7 +2,7 @@ import { x402Client, PaymentPolicy } from "@x402/core/client";
 import { Network } from "@x402/core/types";
 import { ExactConcordiumScheme, ExactConcordiumSchemeConfig } from "./scheme";
 import { ExactConcordiumSchemeV1 } from "../v1";
-import { CONCORDIUM_V1_NETWORKS } from "../../types";
+import { CONCORDIUM_V1_NETWORKS } from "../../config";
 
 /**
  * Configuration options for registering Concordium schemes to an x402Client

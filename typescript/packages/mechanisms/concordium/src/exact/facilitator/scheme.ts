@@ -95,14 +95,6 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     const concordiumPayload = payload.payload as ExactConcordiumPayloadV2;
     const payer = concordiumPayload.sender;
 
-    if (!this.isConcordiumNetwork(payload.network)) {
-      return this.invalid("unsupported_network", payer);
-    }
-
-    if (payload.network !== requirements.network) {
-      return this.invalid("network_mismatch", payer);
-    }
-
     let txInfo: TransactionInfo | null;
     try {
       txInfo = await this.client.getTransactionStatus(concordiumPayload.txHash);

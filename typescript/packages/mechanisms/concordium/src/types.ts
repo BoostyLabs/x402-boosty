@@ -12,6 +12,10 @@ export interface ExactConcordiumPayloadV2 {
   sender: string;
   /** Asset symbol ("" for CCD, "EURR" for PLT) */
   asset?: string;
+  /** Block hash */
+  blockHash?: string;
+
+  [key: string]: unknown;
 }
 
 /**
@@ -22,6 +26,8 @@ export interface ExactConcordiumPayloadV1 {
   txHash: string;
   /** Sender address */
   sender: string;
+
+  [key: string]: unknown;
 }
 
 /**
