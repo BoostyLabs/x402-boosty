@@ -102,7 +102,7 @@ export class ConcordiumClient {
         return { txHash, status, sender: "" };
       }
 
-      const sender = summary.sender ?? "";
+      const sender = summary.sender.address ?? "";
       const transactionType = summary.transactionType;
 
       // CCD transfer
@@ -111,7 +111,7 @@ export class ConcordiumClient {
           txHash,
           status,
           sender,
-          recipient: summary.transfer.to,
+          recipient: summary.transfer.to?.address,
           amount: summary.transfer.amount?.toString(),
           asset: "", // Native CCD
         };
