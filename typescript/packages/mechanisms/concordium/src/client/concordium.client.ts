@@ -128,7 +128,7 @@ export class ConcordiumClient {
             txHash,
             status,
             sender,
-            recipient: transferEvent.to?.address,
+            recipient: transferEvent.to?.address?.address,
             amount: transferEvent.amount?.value?.toString(),
             asset: transferEvent.tokenId,
           };

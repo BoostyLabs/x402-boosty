@@ -1,10 +1,11 @@
+import { Network } from "@x402/core/types";
 /**
  * Concordium chain configuration.
  */
 
 export interface ChainConfig {
   name: string;
-  network: string;
+  network: Network;
   v1Network: string;
   grpcUrl: string;
   explorerUrl: string;
@@ -42,14 +43,14 @@ export const CONCORDIUM_V1_NETWORKS = CHAINS.map((c) => c.v1Network);
 /**
  * Get chain config by network (V1 or V2).
  */
-export function getChainConfig(network: string): ChainConfig | undefined {
-  return BY_V1.get(network) ?? BY_NETWORK.get(network);
+export function getChainConfig(network: string | Network): ChainConfig | undefined {
+  return BY_V1.get(network) ?? BY_NETWORK.get(network as Network);
 }
 
 /**
  * Get explorer URL for transaction.
  */
-export function getExplorerTxUrl(network: string, txHash: string): string | undefined {
+export function getExplorerTxUrl(network: string | Network, txHash: string): string | undefined {
   const config = getChainConfig(network);
   return config ? `${config.explorerUrl}/transaction/${txHash}` : undefined;
 }
@@ -57,7 +58,7 @@ export function getExplorerTxUrl(network: string, txHash: string): string | unde
 /**
  * Get explorer URL for account.
  */
-export function getExplorerAccountUrl(network: string, address: string): string | undefined {
+export function getExplorerAccountUrl(network: string | Network, address: string): string | undefined {
   const config = getChainConfig(network);
   return config ? `${config.explorerUrl}/account/${address}` : undefined;
 }

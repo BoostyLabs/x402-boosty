@@ -95,40 +95,12 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     const concordiumPayload = payload.payload as ExactConcordiumPayloadV2;
     const payer = concordiumPayload.sender;
 
-    let txInfo: TransactionInfo | null;
-    try {
-      txInfo = await this.client.getTransactionStatus(concordiumPayload.txHash);
-    } catch {
-      return this.invalid("transaction_lookup_failed", payer);
+    if (!concordiumPayload.txHash) {
+      return this.invalid("missing_tx_hash", payer);
     }
 
-    if (!txInfo) {
-      return this.invalid("transaction_not_found", payer);
-    }
-
-    if (txInfo.status === "failed") {
-      return this.invalid("transaction_failed", payer);
-    }
-
-    if (!txInfo.recipient || !this.addressEquals(txInfo.recipient, requirements.payTo)) {
-      return this.invalid("recipient_mismatch", payer);
-    }
-
-    const requiredAmount = this.getRequiredAmount(requirements);
-    const actualAmount = BigInt(txInfo.amount || "0");
-
-    if (actualAmount < requiredAmount) {
-      return this.invalid("insufficient_amount", payer);
-    }
-
-    // Validate asset
-    // Native CCD: requirements.asset is "" or undefined
-    // PLT token: requirements.asset is symbol (e.g., "USDR")
-    const expectedAsset = requirements.asset || "";
-    const actualAsset = concordiumPayload.asset || "";
-
-    if (expectedAsset !== actualAsset) {
-      return this.invalid("asset_mismatch", payer);
+    if (!concordiumPayload.sender) {
+      return this.invalid("missing_sender", payer);
     }
 
     return { isValid: true, payer };
@@ -154,43 +126,45 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     const txHash = concordiumPayload.txHash;
     const payer = concordiumPayload.sender;
 
-    const verifyResult = await this.verify(payload, requirements);
-
-    if (!verifyResult.isValid) {
-      return {
-        success: false,
-        network,
-        transaction: txHash,
-        payer,
-        errorReason: verifyResult.invalidReason,
-      };
+    let txInfo: TransactionInfo | null;
+    try {
+      txInfo = await this.client.waitForFinalization(txHash, this.finalizationTimeoutMs);
+    } catch {
+      return this.failure(network, txHash, payer, "transaction_lookup_failed");
     }
 
-    if (this.requireFinalization) {
-      try {
-        const finalizedTx = await this.client.waitForFinalization(
-          txHash,
-          this.finalizationTimeoutMs,
-        );
+    if (!txInfo) {
+      return this.failure(network, txHash, payer, "transaction_not_found");
+    }
 
-        if (!finalizedTx || finalizedTx.status !== "finalized") {
-          return {
-            success: false,
-            network,
-            transaction: txHash,
-            payer,
-            errorReason: "finalization_timeout",
-          };
-        }
-      } catch (error) {
-        return {
-          success: false,
-          network,
-          transaction: txHash,
-          payer,
-          errorReason: "finalization_failed",
-        };
-      }
+    if (txInfo.status === "failed") {
+      return this.failure(network, txHash, payer, "transaction_failed");
+    }
+
+    if (txInfo.status !== "finalized") {
+      return this.failure(network, txHash, payer, "finalization_timeout");
+    }
+
+    if (txInfo.sender && !this.addressEquals(txInfo.sender, payer)) {
+      return this.failure(network, txHash, payer, "sender_mismatch");
+    }
+
+    if (!txInfo.recipient || !this.addressEquals(txInfo.recipient, requirements.payTo)) {
+      return this.failure(network, txHash, payer, "recipient_mismatch");
+    }
+
+    const requiredAmount = this.getRequiredAmount(requirements);
+    const actualAmount = BigInt(txInfo.amount || "0");
+
+    if (actualAmount < requiredAmount) {
+      return this.failure(network, txHash, payer, "insufficient_amount");
+    }
+
+    const expectedAsset = requirements.asset || "";
+    const actualAsset = txInfo.asset || "";
+
+    if (expectedAsset !== actualAsset) {
+      return this.failure(network, txHash, payer, "asset_mismatch");
     }
 
     return {
@@ -205,8 +179,19 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     return { isValid: false, invalidReason: reason, payer };
   }
 
-  private isConcordiumNetwork(network: string): boolean {
-    return network.startsWith("ccd:");
+  private failure(
+    network: Network,
+    transaction: string,
+    payer: string,
+    errorReason: string,
+  ): SettleResponse {
+    return {
+      success: false,
+      network,
+      transaction,
+      payer,
+      errorReason,
+    };
   }
 
   private addressEquals(a: string, b: string): boolean {
