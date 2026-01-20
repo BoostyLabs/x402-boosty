@@ -12,6 +12,7 @@ import {
   ContractAddress as SDKContractAddress,
   ReceiveName,
   Parameter,
+  CcdAmount,
 } from "@concordium/web-sdk";
 
 import { getChainConfig } from "../config";
@@ -105,14 +106,22 @@ export class ConcordiumClient {
       const sender = summary.sender.address ?? "";
       const transactionType = summary.transactionType;
 
+      if (transactionType === "failed") {
+        return { txHash, status: "failed", sender };
+      }
+
       // CCD transfer
       if (transactionType === "transfer" && summary.transfer) {
+        const amountMicroCcd = summary.transfer.amount
+          ? CcdAmount.toMicroCcd(summary.transfer.amount)
+          : 0n;
+
         return {
           txHash,
           status,
           sender,
           recipient: summary.transfer.to?.address,
-          amount: summary.transfer.amount?.toString(),
+          amount: amountMicroCcd.toString(),
           asset: "", // Native CCD
         };
       }
@@ -130,7 +139,7 @@ export class ConcordiumClient {
             sender,
             recipient: transferEvent.to?.address?.address,
             amount: transferEvent.amount?.value?.toString(),
-            asset: transferEvent.tokenId,
+            asset: transferEvent.tokenId?.value,
           };
         }
       }
