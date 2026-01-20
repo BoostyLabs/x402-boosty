@@ -113,48 +113,30 @@ import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 // Create scheme and register assets
 const concordiumScheme = new ExactConcordiumScheme();
 
-// Register CIS-2 tokens (optional - native CCD works by default)
+// Register PLT tokens (optional - native CCD works by default)
 concordiumScheme
-  .registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "EURR", 6)
-  .registerAsset("ccd:9dd9ca4d19e9393877d2c44b70f89acb", "USDR", 6)
+  .registerAsset("ccd:*", "EURR", 6)
+  .registerAsset("ccd:*", "USDR", 6)
 
 // Define routes
 const routes = {
   // Native CCD payment (default when no extra.asset)
   "GET /api/basic": {
-    accepts: {
-      scheme: "exact",
-      network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
-      payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-      price: "0.5", // 0.5 CCD
-    },
-    description: "Basic endpoint - 0.5 CCD",
-    mimeType: "application/json",
-  },
-
-  // Explicit CCD
-  "GET /api/explicit-ccd": {
-    accepts: {
-      scheme: "exact",
-      network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
-      payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-      price: "1.0",
-      extra: { asset: "CCD" },
-    },
-    description: "Explicit CCD payment",
+    scheme: "exact",
+    network: appConfig.concordiumNetwork,
+    payTo: appConfig.payTo,
+    price: "10", // 10 CCD
+    description: "Limited drop merch",
     mimeType: "application/json",
   },
 
   // PLT token payment (registered asset)
   "GET /api/premium": {
-    accepts: {
-      scheme: "exact",
-      network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
-      payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-      price: "5.00",
-      extra: { asset: "USDR" },
-    },
-    description: "Premium endpoint - 5 USDR",
+    scheme: "exact",
+    network: appConfig.concordiumNetwork,
+    payTo: appConfig.payTo,
+    price: { amount: "1", asset: "EURR" }, // 1 EURR
+    description: "Premium content - 1 EURR",
     mimeType: "application/json",
   },
 };
@@ -164,7 +146,7 @@ const facilitator = new HTTPFacilitatorClient({
   url: "https://your-facilitator.example.com",
 });
 
-const server = new x402HTTPResourceServer(routes, facilitator);
+const server = new x402HTTPResourceServer(facilitator);
 server.register("ccd:*", concordiumScheme);
 
 await server.initialize();
@@ -188,23 +170,6 @@ const scheme = new ExactConcordiumScheme({
 });
 
 facilitator.registerScheme("ccd:*", scheme);
-```
-
-### 4. Direct Registration (Full Control)
-```typescript
-import { x402Client } from "@x402/core/client";
-import { ExactConcordiumScheme } from "@x402/concordium/exact/client";
-
-const scheme = new ExactConcordiumScheme({
-  createAndBroadcastTransaction: async (payTo, amount, asset) => {
-    return { txHash, sender };
-  },
-});
-
-const client = new x402Client()
-  .register("ccd:*", scheme)
-  .registerV1("concordium", scheme)
-  .registerV1("concordium-testnet", scheme);
 ```
 
 ## Supported Networks
@@ -242,22 +207,9 @@ scheme.registerAsset("ccd:*", "USDR", 6);
 
 // Route config: Use by symbol
 {
-  price: "10",
-  extra: { asset: "USDR" },
+  price: { amount: "1", asset: "EURR" } // 1 EURR
 }
 ```
-
-### Asset Resolution Rules
-
-| Configuration | Result |
-|---------------|--------|
-| No `extra.asset` | Native CCD |
-| `extra.asset: "CCD"` | Native CCD |
-| `extra.asset: "EUROe"` | Lookup registered asset |
-| `extra.asset: "UNKNOWN"` | **Error** - not registered |
-| `price: "$1.00"` | **Error** - USD not supported |
-
-**Note:** USD prices (`$`) are not supported. Use explicit asset symbols.
 
 ## Amount Utilities
 ```typescript
@@ -327,7 +279,6 @@ await client.getTransactionStatus(txHash);
 await client.waitForFinalization(txHash, timeoutMs);
 await client.verifyPayment(txHash, { recipient, minAmount });
 await client.invokeContract(contract, method, params);
-client.close();
 ```
 
 ### ExactConcordiumScheme (Server)
@@ -345,8 +296,8 @@ scheme.getAsset(network, symbol);
 // Get all supported assets
 scheme.getSupportedAssets(network);
 
-// Parse price with extra.asset
-scheme.parsePriceWithExtra(price, network, extra);
+// Parse price amount
+scheme.parseAssetAmount(price, network);
 ```
 
 ### ExactConcordiumScheme (Facilitator)
@@ -361,8 +312,6 @@ const scheme = new ExactConcordiumScheme({
 });
 
 // Methods (called by facilitator)
-scheme.getExtra(network);           // Returns { assets: [...] }
-scheme.getSigners(network);         // Returns []
 await scheme.verify(payload, requirements);
 await scheme.settle(payload, requirements);
 ```

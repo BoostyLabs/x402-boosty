@@ -221,8 +221,8 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       const supported = this.getSupportedSymbols(network);
       throw new Error(
         `Unknown asset "${symbol}" on ${network}. ` +
-          `Registered: CCD${supported.length ? ", " + supported.join(", ") : ""}. ` +
-          `Use registerAsset() to add.`,
+        `Registered: CCD${supported.length ? ", " + supported.join(", ") : ""}. ` +
+        `Use registerAsset() to add.`,
       );
     }
 
