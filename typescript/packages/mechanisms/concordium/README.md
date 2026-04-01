@@ -119,7 +119,7 @@ The facilitator verifies partially-signed transactions, adds its sponsor signatu
 ```typescript
 import { ExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
 import { toConcordiumFacilitatorSigner } from "@x402/concordium/signer";
-import { ConcordiumGRPCNodeClient, credentials } from "@concordium/web-sdk/nodejs";
+import { getConcordiumGrpcUrl, parseGrpcUrl, CONCORDIUM_MAINNET_CAIP2 } from "@x402/concordium/constants";
 import { parseWallet, buildAccountSigner, AccountAddress } from "@concordium/web-sdk";
 import { readFileSync } from "fs";
 
@@ -128,15 +128,16 @@ const walletExport = parseWallet(readFileSync("./sponsor-wallet.export", "utf8")
 const sponsorAccount = AccountAddress.fromBase58(walletExport.value.address);
 const sponsorSigner = buildAccountSigner(walletExport);
 
-// Connect to node
-const grpcClient = new ConcordiumGRPCNodeClient(
-  "grpc.mainnet.concordium.software",
-  20000,
-  credentials.createSsl(),
-);
+// Resolve gRPC endpoint from network
+const network = CONCORDIUM_MAINNET_CAIP2; // mainnet
+const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(network));
 
-// Create facilitator signer
-const signer = toConcordiumFacilitatorSigner(sponsorAccount, sponsorSigner, grpcClient);
+// Create facilitator signer (gRPC client created internally)
+const signer = toConcordiumFacilitatorSigner(
+  sponsorAccount.toString(),
+  sponsorSigner,
+  { host, port, useTls: true },
+);
 
 // Create scheme
 const scheme = new ExactConcordiumScheme({
@@ -156,7 +157,7 @@ const scheme = new ExactConcordiumScheme({
 ## Payment Flow
 
 ```
-┌─────────┐       ┌──────────┐      ┌──────────────┐      ┌────────────┐
+┌──────────┐      ┌──────────┐      ┌──────────────┐      ┌────────────┐
 │  Client  │      │  Server  │      │ Facilitator  │      │ Concordium │
 └────┬─────┘      └────┬─────┘      └──────┬───────┘      └─────┬──────┘
      │                  │                    │                     │
@@ -188,10 +189,10 @@ const scheme = new ExactConcordiumScheme({
      │                  │    - Sender identity                     │
      │                  │    - Sponsor identity                    │
      │                  │    - Transfer destination                │
-     │                  │    - Amount >= required                  │
+     │                  │    - Amount == required                  │
      │                  │    - Asset type match                    │
      │                  │    - Expiry valid                        │
-     │                  │    - Sender signature present            │
+     │                  │    - Sender signature verified           │
      │                  │    - Payload safety                      │
      │                  │                    │                     │
      │                  │  7. VerifyResponse  │                     │
@@ -210,9 +211,9 @@ const scheme = new ExactConcordiumScheme({
      │                  │                    │────────────────────>│
      │                  │                    │                     │
      │                  │                    │  11. Defense-in-depth│
-     │                  │                    │      on-chain checks│
+     │                  │                    │      sender/recipient│
      │                  │                    │                     │
-     │                  │  12. SettleResponse │                     │
+     │                  │  12. SettleResponse│                     │
      │                  │<───────────────────│                     │
      │                  │                    │                     │
      │  13. 200 OK + Resource                │                     │
@@ -223,14 +224,14 @@ const scheme = new ExactConcordiumScheme({
 
 The facilitator enforces all 9 rules before sponsoring:
 
-1. **Transaction version** — Must be V1 sponsored format, deserializable via `signableFromJSON()`
+1. **Transaction version** — Must be V1 sponsored format, deserializable from JSON
 2. **Sender identity** — `header.sender` matches `payload.sender`, valid base58
 3. **Sponsor identity** — `header.sponsor.account` matches facilitator's own address
 4. **Transfer destination** — Recipient matches `PaymentRequirements.payTo`
-5. **Amount** — Transfer amount ≥ `PaymentRequirements.amount`
+5. **Amount (exact match)** — Transfer amount must equal `PaymentRequirements.amount` exactly
 6. **Asset type** — SimpleTransfer for CCD, TokenUpdate with matching tokenId for PLT
 7. **Expiry** — In the future and ≤ 10 minutes from now
-8. **Sender signature** — At least one credential signature present
+8. **Sender signature** — Cryptographically verified against on-chain account credentials
 9. **Payload safety** — Exactly one operation, sponsor not sender/recipient
 
 ## Payload Format
@@ -245,23 +246,27 @@ The `PaymentPayload.payload` field for the exact scheme (x402Version: 2):
       "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
       "nonce": 42,
       "expiry": 1700000300,
+      "executionEnergyAmount": 300,
       "numSignatures": 1,
       "sponsor": {
-        "address": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+        "account": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
         "numSignatures": 1
       }
     },
-    "payload": { "..." : "CCD transfer or PLT tokenUpdate payload" },
+    "payload": {
+      "type": "transfer",
+      "toAddress": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+      "amount": "1000000"
+    },
     "signatures": {
-      "sender": { "0": { "0": "a1b2c3..." } },
-      "sponsor": {}
+      "sender": { "0": { "0": "a1b2c3..." } }
     }
   },
   "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN"
 }
 ```
 
-The `signatures.sender` is populated by the client. The `signatures.sponsor` is empty `{}` — the facilitator fills it during settlement.
+The `signatures.sender` is populated by the client. The facilitator adds `signatures.sponsor` during settlement.
 
 ## Supported Networks
 
@@ -272,32 +277,31 @@ The `signatures.sender` is populated by the client. The `signatures.sponsor` is 
 
 Wildcard `ccd:*` can be used for asset registration that applies to all networks.
 
-## Chain Configuration
+## Constants
 
 ```typescript
 import {
-  getChainConfig,
+  CONCORDIUM_MAINNET_CAIP2,
+  CONCORDIUM_TESTNET_CAIP2,
+  getConcordiumGrpcUrl,
+  parseGrpcUrl,
   getExplorerTxUrl,
-  CONCORDIUM_MAINNET,
-  CONCORDIUM_TESTNET,
-} from "@x402/concordium/config";
+  getExplorerAccountUrl,
+} from "@x402/concordium";
 
-const config = getChainConfig("ccd:9dd9ca4d19e9393877d2c44b70f89acb");
-// {
-//   name: "Concordium Mainnet",
-//   network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
-//   v1Network: "concordium",
-//   grpcUrl: "grpc.mainnet.concordium.software:20000",
-//   explorerUrl: "https://ccdexplorer.io/mainnet",
-//   decimals: 6,
-// }
+// Resolve gRPC endpoint
+const grpcUrl = getConcordiumGrpcUrl(CONCORDIUM_MAINNET_CAIP2);
+// "grpc.mainnet.concordium.software:20000"
 
-// V1 network names also work
-const testnet = getChainConfig("concordium-testnet");
+const [host, port] = parseGrpcUrl(grpcUrl);
+// ["grpc.mainnet.concordium.software", 20000]
 
 // Explorer links
-const txUrl = getExplorerTxUrl("concordium", "a1b2c3...");
-// "https://ccdexplorer.io/mainnet/transaction/a1b2c3..."
+const txUrl = getExplorerTxUrl(CONCORDIUM_TESTNET_CAIP2, "a1b2c3...");
+// "https://ccdexplorer.io/testnet/transaction/a1b2c3..."
+
+const accountUrl = getExplorerAccountUrl(CONCORDIUM_MAINNET_CAIP2, "4Fmi...");
+// "https://ccdexplorer.io/mainnet/account/4Fmi..."
 ```
 
 ## Amount Format
@@ -329,11 +333,22 @@ interface ClientConcordiumSigner {
 }
 ```
 
+### GrpcConfig
+
+```typescript
+interface GrpcConfig {
+  host: string;
+  port: number;
+  useTls?: boolean;
+}
+```
+
 ### FacilitatorConcordiumSigner
 
 ```typescript
 interface FacilitatorConcordiumSigner {
   getAddress(): string;
+  getAccountInfo(address: string): Promise<AccountInfo>;
   addSponsorSignature(tx: SignableV1Transaction): Promise<Transaction.JSON>;
   submitTransaction(signedTxJSON: Transaction.JSON): Promise<string>;
   waitForFinalization(txHash: string, timeoutMs?: number): Promise<TransactionInfo>;
@@ -389,8 +404,9 @@ interface ExactConcordiumPayloadV2 {
 | `unexpected_transaction_type` | 9 | Not a transfer or tokenUpdate |
 | `asset_type_mismatch` / `token_id_mismatch` | 6 | Wrong tx type for expected asset |
 | `missing_recipient` / `recipient_mismatch` | 4 | Recipient doesn't match payTo |
-| `insufficient_amount` | 5 | Amount below required |
-| `missing_sender_signature` | 8 | No credential signature present |
+| `amount_mismatch` | 5 | Amount does not equal required |
+| `missing_sender_signature` / `invalid_sender_signature` | 8 | Signature absent or cryptographically invalid |
+| `signature_verification_failed` | 8 | Could not verify against on-chain credentials |
 
 ### Settlement errors (from `settle()`)
 
@@ -401,19 +417,15 @@ interface ExactConcordiumPayloadV2 {
 | `finalization_failed` / `finalization_timeout` | On-chain finalization issue |
 | `on_chain_sender_mismatch` | Defense-in-depth: sender differs |
 | `on_chain_recipient_mismatch` | Defense-in-depth: recipient differs |
-| `on_chain_insufficient_amount` | Defense-in-depth: amount too low |
 
 ## File Structure
 
 ```
 @x402/concordium/
 ├── index.ts                    # Package entry point
-├── types.ts                    # SignableV1Transaction, ExactConcordiumPayloadV2
-├── signer.ts                   # ClientConcordiumSigner, FacilitatorConcordiumSigner
-├── client.ts                   # ConcordiumClient (gRPC wrapper)
-├── config/
-│   ├── chains.ts               # Network registry, explorer URLs
-│   └── index.ts
+├── constants.ts                # CAIP-2 identifiers, gRPC URLs, explorer, limits
+├── types.ts                    # SignableV1Transaction, ExactConcordiumPayloadV2, TransactionInfo
+├── signer.ts                   # ClientConcordiumSigner, FacilitatorConcordiumSigner, factory
 └── exact/
     ├── client/
     │   ├── scheme.ts           # Builds + sender-signs V1 sponsored tx
@@ -430,4 +442,4 @@ interface ExactConcordiumPayloadV2 {
 
 - `@x402/core` — Core protocol types, client, facilitator, and server
 - `@x402/fetch` — HTTP wrapper with automatic payment handling
-- `@concordium/web-sdk` — Concordium SDK (peer dependency)
+- `@concordium/web-sdk` — Concordium SDK (dependency)
