@@ -147,7 +147,7 @@ export function toConcordiumFacilitatorSigner(
         throw new Error(`Transaction ${txHash} failed on-chain`);
       }
 
-      return parseTransactionSummary(txHash, status, sender, summary);
+      return parseTransactionSummary(txHash, status, sender, summary.summary);
     },
   };
 }

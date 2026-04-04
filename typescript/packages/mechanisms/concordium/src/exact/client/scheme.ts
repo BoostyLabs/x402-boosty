@@ -135,7 +135,9 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
     const signedJson = Transaction.toJSON(signed);
 
     const concordiumPayload: ExactConcordiumPayloadV2 = {
-      signedTransaction: signedJson as unknown as ExactConcordiumPayloadV2["signedTransaction"],
+      signedTransaction: toJsonSafe(
+        signedJson,
+      ) as unknown as ExactConcordiumPayloadV2["signedTransaction"],
       sender: this.signer.accountAddress.toString(),
     };
 
@@ -210,4 +212,29 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
 
     return new ConcordiumGRPCNodeClient(host, port, creds);
   }
+}
+
+/**
+ * Recursively converts BigInt values to Numbers for JSON serialization.
+ * The Concordium SDK outputs BigInts in transaction headers (nonce, numSignatures,
+ * executionEnergyAmount) which are not JSON-serializable. These values are small
+ * enough to fit safely within Number.MAX_SAFE_INTEGER.
+ *
+ * @param value - The value to sanitize
+ * @returns A JSON-safe copy with BigInts converted to Numbers
+ */
+function toJsonSafe(value: unknown): unknown {
+  if (typeof value === "bigint") {
+    if (value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER) {
+      return value.toString();
+    }
+    return Number(value);
+  }
+  if (Array.isArray(value)) return value.map(toJsonSafe);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, toJsonSafe(v)]),
+    );
+  }
+  return value;
 }
