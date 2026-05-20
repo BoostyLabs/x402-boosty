@@ -13,7 +13,7 @@ This scheme facilitates payments of a specific amount of CCD or CIS-2 tokens (e.
 The protocol flow for `exact` on Concordium is client-driven with facilitator sponsorship.
 
 1.  **Client** makes a request to a **Resource Server**.
-2.  **Resource Server** responds with a payment required signal containing `PaymentRequired`. The `extra` field in the requirements contains a **sponsorAddress** which is the account address of the identity that will sponsor (pay gas for) the transaction. This is the facilitator.
+2.  **Resource Server** responds with a payment required signal containing `PaymentRequired`. The `extra` field in the requirements contains a **feePayer** which is the account address of the identity that will sponsor (pay fees for) the transaction. This is typically the facilitator. (On Concordium, this is the transaction **sponsor** account.)
 3.  **Client** fetches its own account nonce from the Concordium network.
 4.  **Client** constructs a sponsored transaction containing a transfer to the resource server's wallet address for the specified amount, with the facilitator set as the sponsor.
 5.  **Client** signs the transaction with their wallet (sender signature only). The sponsor signature slot remains empty.
@@ -41,15 +41,19 @@ In addition to the standard x402 `PaymentRequirements` fields, the `exact` schem
   "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
   "maxTimeoutSeconds": 60,
   "extra": {
-    "sponsorAddress": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW"
+    "feePayer": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s"
   }
 }
 ```
 
 - `asset`: Identifies the payment asset for this transaction.
   - `""` (empty string): Native CCD. This is the default.
-  - Token name (e.g., `"EURR"`): PLT/CIS-2 token identified by its registered symbol.
-- `extra.sponsorAddress`: The account address of the facilitator that will sponsor the transaction fees.
+  - Token symbol (e.g., `"EURR"`): PLT token identified by its registered symbol.
+- `extra.feePayer`: The account address of the facilitator fee payer (Concordium sponsor) that will sponsor the transaction fees.
+
+Notes:
+- The core x402 specification allows `asset=""` to represent the network's native asset.
+- On Concordium, PLT tokens have unique registered symbols; this scheme uses the registered symbol as the `asset` identifier.
 
 ### Network Identifiers
 
@@ -65,7 +69,7 @@ Concordium uses CAIP-2 format with the `ccd` namespace:
 | Asset Type | Format       | Example  |
 |------------|--------------|----------|
 | Native CCD | Empty string | `""`     |
-| PLT Token  | Token name   | `"EURR"` |
+| PLT Token  | Token symbol | `"EURR"` |
 
 ### Amount Format
 
@@ -74,7 +78,7 @@ All amounts are expressed in the smallest unit (atomic):
 | Asset Type | Unit | Decimals | Example: 10 CCD / 5 EURR |
 |------------|------|----------|---------------------------|
 | Native CCD | microCCD | 6 | `"10000000"` |
-| PLT Token | Smallest subunit | 6 | `"5000000"` |
+| PLT Token | Smallest subunit | depends on token | `"5000000"` |
 
 ## PaymentPayload `payload` Field
 
@@ -82,17 +86,18 @@ The `payload` field of the `PaymentPayload` contains:
 
 ```json
 {
-  "signedTransaction": { ... },
-  "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN"
+  "signedTransaction": { ... }
 }
 ```
 
 - `signedTransaction`: The JSON-serialized V1 sponsored transaction object, containing the sender's signature but with an empty sponsor signature slot.
-- `sender`: The sender's Concordium account address (base58).
+- `sender`: (Optional) The sender's Concordium account address (base58). Redundant with `signedTransaction.header.sender`.
 
 The `signedTransaction` is a V1 transaction with:
 - `signatures.sender` populated (client's signature)
 - `signatures.sponsor` empty (facilitator adds during settlement)
+
+Facilitators MUST treat `signedTransaction.header.sender` as the source of truth.
 
 Full `PaymentPayload` object (native CCD):
 
@@ -112,7 +117,7 @@ Full `PaymentPayload` object (native CCD):
     "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
     "maxTimeoutSeconds": 60,
     "extra": {
-      "sponsorAddress": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW"
+      "feePayer": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s"
     }
   },
   "payload": {
@@ -124,7 +129,7 @@ Full `PaymentPayload` object (native CCD):
         "expiry": 1700000300,
         "numSignatures": 1,
         "sponsor": {
-          "address": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          "address": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s",
           "numSignatures": 1
         }
       },
@@ -133,8 +138,7 @@ Full `PaymentPayload` object (native CCD):
         "sender": { "0": { "0": "a1b2c3..." } },
         "sponsor": {}
       }
-    },
-    "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN"
+    }
   }
 }
 ```
@@ -157,7 +161,7 @@ Full `PaymentPayload` object (PLT token — EURR):
     "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
     "maxTimeoutSeconds": 60,
     "extra": {
-      "sponsorAddress": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW"
+      "feePayer": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s"
     }
   },
   "payload": {
@@ -169,7 +173,7 @@ Full `PaymentPayload` object (PLT token — EURR):
         "expiry": 1700000300,
         "numSignatures": 1,
         "sponsor": {
-          "address": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          "address": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s",
           "numSignatures": 1
         }
       },
@@ -178,8 +182,7 @@ Full `PaymentPayload` object (PLT token — EURR):
         "sender": { "0": { "0": "d4e5f6..." } },
         "sponsor": {}
       }
-    },
-    "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN"
+    }
   }
 }
 ```
@@ -208,12 +211,11 @@ A facilitator verifying an `exact`-scheme Concordium payment MUST enforce all of
 
 2. Sender identity
 
-- `transaction.header.sender` MUST match `payload.sender`.
-- `payload.sender` MUST be a valid Concordium account address (base58).
+- `transaction.header.sender` MUST be a valid Concordium account address (base58).
 
 3. Sponsor identity
 
-- `transaction.header.sponsor.address` MUST match the facilitator's own sponsor address.
+- `transaction.header.sponsor.address` MUST match the address provided in `PaymentRequirements.extra.feePayer`.
 - The facilitator MUST NOT sponsor transactions that name a different sponsor.
 
 4. Transfer destination
@@ -236,7 +238,7 @@ The exact scheme requires a strict equality check. Transactions with amounts gre
 7. Transaction expiry
 
 - `transaction.header.expiry` MUST be in the future.
-- The expiry SHOULD NOT exceed 10 minutes from the current time.
+- `transaction.header.expiry` MUST NOT exceed the current time plus `PaymentRequirements.maxTimeoutSeconds`.
 
 8. Sender signature
 
@@ -249,3 +251,5 @@ The exact scheme requires a strict equality check. Transactions with amounts gre
 - The facilitator's sponsor address MUST NOT appear as the sender, recipient, or authority of the transfer.
 
 These checks are security-critical to ensure the sponsor cannot be tricked into paying gas for unintended transactions. Implementations MAY introduce stricter limits (e.g., shorter expiry caps) but MUST NOT relax the above constraints.
+
+Facilitators SHOULD also ensure the transaction is likely to succeed on-chain (e.g., by simulation or targeted preflight checks such as nonce/sequence validity and sufficient sender balance for the transfer).
