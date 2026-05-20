@@ -2,7 +2,7 @@
 
 This document specifies the `exact` payment scheme for the x402 protocol on Concordium.
 
-This scheme facilitates payments of a specific amount of CCD or CIS-2 tokens (e.g., PLT) on the Concordium blockchain using sponsored transactions (V1).
+This scheme facilitates payments of a specific amount of CCD or PLT on the Concordium blockchain using sponsored transactions (V1).
 
 ## Scheme Name
 
@@ -252,4 +252,4 @@ The exact scheme requires a strict equality check. Transactions with amounts gre
 
 These checks are security-critical to ensure the sponsor cannot be tricked into paying gas for unintended transactions. Implementations MAY introduce stricter limits (e.g., shorter expiry caps) but MUST NOT relax the above constraints.
 
-Facilitators SHOULD also ensure the transaction is likely to succeed on-chain (e.g., by simulation or targeted preflight checks such as nonce/sequence validity and sufficient sender balance for the transfer).
+Facilitators MUST also ensure the transaction is likely to succeed on-chain by simulation or targeted preflight checks that include at a minimum ensuring nonce/sequence validity and sufficient sender balance for the transfer.
