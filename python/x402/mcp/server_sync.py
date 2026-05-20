@@ -158,6 +158,14 @@ def create_payment_wrapper_sync(
                     resource_server, tool_name, config, str(e)
                 )
 
+            if not settle_result.success:
+                return _create_settlement_failed_result_sync(
+                    resource_server,
+                    tool_name,
+                    config,
+                    settle_result.error_reason or "Unknown settlement failure",
+                )
+
             if config.hooks and config.hooks.on_after_settlement:
                 settlement_context = SettlementContext(
                     tool_name=tool_name,
@@ -205,6 +213,7 @@ def _create_payment_required_result_sync(
         config.accepts,
         resource_info,
         error_message,
+        config.extensions,
     )
 
     payment_required_dict = (
@@ -237,10 +246,11 @@ def _create_settlement_failed_result_sync(
         mime_type=(config.resource.mime_type if config.resource else "application/json"),
     )
 
-    resource_server.create_payment_required_response(
+    payment_required = resource_server.create_payment_required_response(
         config.accepts,
         resource_info,
         f"Payment settlement failed: {error_message}",
+        config.extensions,
     )
 
     settlement_failure = {
@@ -250,14 +260,12 @@ def _create_settlement_failed_result_sync(
         "network": config.accepts[0].network,
     }
 
-    error_data = {
-        "x402Version": 2,
-        "accepts": [
-            r.model_dump(by_alias=True) if hasattr(r, "model_dump") else r for r in config.accepts
-        ],
-        "error": f"Payment settlement failed: {error_message}",
-        MCP_PAYMENT_RESPONSE_META_KEY: settlement_failure,
-    }
+    error_data = (
+        payment_required.model_dump(by_alias=True)
+        if hasattr(payment_required, "model_dump")
+        else payment_required
+    )
+    error_data[MCP_PAYMENT_RESPONSE_META_KEY] = settlement_failure
 
     content_text = json.dumps(error_data)
 
