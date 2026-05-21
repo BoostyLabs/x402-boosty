@@ -8,7 +8,7 @@ This package provides scheme implementations for EVM-based blockchains (Ethereum
 
 ## Exact Payment Scheme
 
-The **exact** scheme implementation enables fixed-amount payments using EIP-3009 `transferWithAuthorization` for USDC and compatible tokens.
+The **exact** scheme implementation enables fixed-amount payments using EIP-3009 `transferWithAuthorization` or Permit2 for USDC and compatible tokens.
 
 ### Export Paths
 
@@ -18,7 +18,7 @@ The exact scheme is organized by role:
 
 **Import Path:**
 ```
-github.com/coinbase/x402/go/mechanisms/evm/exact/client
+github.com/x402-foundation/x402/go/mechanisms/evm/exact/client
 ```
 
 **Exports:**
@@ -31,7 +31,7 @@ github.com/coinbase/x402/go/mechanisms/evm/exact/client
 
 **Import Path:**
 ```
-github.com/coinbase/x402/go/mechanisms/evm/exact/server
+github.com/x402-foundation/x402/go/mechanisms/evm/exact/server
 ```
 
 **Exports:**
@@ -43,7 +43,7 @@ github.com/coinbase/x402/go/mechanisms/evm/exact/server
 
 **Import Path:**
 ```
-github.com/coinbase/x402/go/mechanisms/evm/exact/facilitator
+github.com/x402-foundation/x402/go/mechanisms/evm/exact/facilitator
 ```
 
 **Exports:**
@@ -61,19 +61,14 @@ All EVM networks are supported by default. The only consideration is how prices 
 1. Register a custom money parser in their `ExactEvmScheme` via `RegisterMoneyParser()`, OR
 2. Use a chain that has a default asset configuration
 
-Networks with default assets configured:
-
-- **Base Mainnet**: `eip155:8453` (USDC)
-- **Base Sepolia**: `eip155:84532` (USDC)
-
-To add default asset support for additional chains, see [DEFAULT_ASSET.md](./DEFAULT_ASSET.md).
+For the current list of chains with default assets configured, see [Default Assets for Dollar-String Pricing](../../../docs/core-concepts/network-and-token-support.mdx#default-assets-for-dollar-string-pricing) in the x402 docs. To add default asset support for a new chain, see [Adding Support for New Networks](../../../docs/core-concepts/network-and-token-support.mdx#adding-support-for-new-networks).
 
 ## Scheme Implementation
 
 The **exact** scheme implements fixed-amount payments:
 
-- **Standard**: EIP-3009 `transferWithAuthorization`
-- **Token**: USDC and EIP-3009 compatible tokens
+- **Standard**: EIP-3009 `transferWithAuthorization` or Permit2 (per-asset configuration)
+- **Token**: USDC and other stablecoins (EIP-3009 or any ERC-20 via Permit2)
 - **Gas**: Paid by facilitator
 - **Confirmation**: On-chain settlement with transaction hash
 

@@ -37,6 +37,7 @@ class PaymentWrapperConfig:
         accepts: list[PaymentRequirements],
         resource: ResourceInfo | None = None,
         hooks: PaymentWrapperHooks | None = None,
+        extensions: dict[str, Any] | None = None,
     ):
         """Initialize async payment wrapper config.
 
@@ -44,12 +45,16 @@ class PaymentWrapperConfig:
             accepts: List of payment requirements
             resource: Optional resource info
             hooks: Optional async server-side hooks
+            extensions: Optional x402 extensions to include in PaymentRequired responses.
+                Use this to attach Bazaar discovery metadata so facilitators can index
+                the tool. Example: ``declare_mcp_discovery_extension(config)``
         """
         if not accepts:
             raise ValueError("accepts must have at least one payment requirement")
         self.accepts = accepts
         self.resource = resource
         self.hooks = hooks
+        self.extensions = extensions
 
 
 def wrap_fastmcp_tool(
@@ -267,6 +272,14 @@ def create_payment_wrapper(
                     resource_server, tool_name, config, str(e)
                 )
 
+            if not settle_result.success:
+                return await _create_settlement_failed_result_async(
+                    resource_server,
+                    tool_name,
+                    config,
+                    settle_result.error_reason or "Unknown settlement failure",
+                )
+
             # Run onAfterSettlement hook if present
             if config.hooks and config.hooks.on_after_settlement:
                 settlement_context = SettlementContext(
@@ -329,6 +342,7 @@ async def _create_payment_required_result_async(
         config.accepts,
         resource_info,
         error_message,
+        config.extensions,
     )
 
     # Convert to dict for structuredContent
@@ -377,6 +391,7 @@ async def _create_settlement_failed_result_async(
         config.accepts,
         resource_info,
         f"Payment settlement failed: {error_message}",
+        config.extensions,
     )
 
     settlement_failure = {

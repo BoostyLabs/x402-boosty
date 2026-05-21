@@ -1,12 +1,12 @@
-module github.com/coinbase/x402/e2e/clients/mcp-go
+module github.com/x402-foundation/x402/e2e/clients/mcp-go
 
 go 1.24.0
 
 toolchain go1.24.1
 
 require (
-	github.com/coinbase/x402/go v0.0.0
 	github.com/modelcontextprotocol/go-sdk v1.3.0
+	github.com/x402-foundation/x402/go v0.0.0
 )
 
 require (
@@ -31,10 +31,10 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/crypto v0.41.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 )
 
-replace github.com/coinbase/x402/go => ../../../go
+replace github.com/x402-foundation/x402/go => ../../../go

@@ -4,21 +4,26 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
+	"log"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
-	x402 "github.com/coinbase/x402/go"
-	"github.com/coinbase/x402/go/types"
+	x402 "github.com/x402-foundation/x402/go"
+	exttypes "github.com/x402-foundation/x402/go/extensions/types"
+	"github.com/x402-foundation/x402/go/types"
 )
 
 // Pre-compiled regex patterns to avoid recompilation on every call.
 var (
 	multiSlashRegex = regexp.MustCompile(`/+`)
 	paramRegex      = regexp.MustCompile(`\\\[([^\]]+)\\\]`)
+	colonParamRegex = exttypes.ColonParamRegex
 )
 
 // ============================================================================
@@ -40,12 +45,19 @@ type HTTPAdapter interface {
 // Configuration Types
 // ============================================================================
 
-// PaywallConfig configures the HTML paywall for browser requests
+// PaywallConfig configures the HTML paywall for browser requests.
+//
+// FaucetURLs is a per-chain override map keyed by CAIP-2 identifier (e.g.
+// "eip155:84532"). When set, the entry for the rendered chain wins over the
+// paywall's curated default. Unmapped chains render "No faucet configured."
+// rather than a fallback link.
 type PaywallConfig struct {
 	AppName    string `json:"appName,omitempty"`
 	AppLogo    string `json:"appLogo,omitempty"`
 	CurrentURL string `json:"currentUrl,omitempty"`
 	Testnet    bool   `json:"testnet,omitempty"`
+	// FaucetURLs is a per-chain override keyed by CAIP-2 identifier.
+	FaucetURLs map[string]string `json:"faucetUrls,omitempty"`
 }
 
 // DynamicPayToFunc is a function that resolves payTo address dynamically based on request context
@@ -118,9 +130,10 @@ type RoutesConfig map[string]RouteConfig
 
 // CompiledRoute is a parsed route ready for matching
 type CompiledRoute struct {
-	Verb   string
-	Regex  *regexp.Regexp
-	Config RouteConfig
+	Verb    string
+	Regex   *regexp.Regexp
+	Config  RouteConfig
+	Pattern string
 }
 
 // ============================================================================
@@ -150,6 +163,15 @@ type HTTPRequestContext struct {
 	Path          string
 	Method        string
 	PaymentHeader string
+	RoutePattern  string
+}
+
+// HTTPTransportContext carries request and response data through settlement processing.
+// ResponseHeaders must be an http.Header — use Header.Get/Del to preserve canonicalization.
+type HTTPTransportContext struct {
+	Request         *HTTPRequestContext
+	ResponseBody    []byte
+	ResponseHeaders http.Header
 }
 
 // HTTPResponseInstructions tells the framework how to respond
@@ -166,6 +188,18 @@ type HTTPProcessResult struct {
 	Response            *HTTPResponseInstructions
 	PaymentPayload      *types.PaymentPayload      // V2 only
 	PaymentRequirements *types.PaymentRequirements // V2 only
+	// DeclaredExtensions is the route's enriched extension declaration map.
+	// Carried through verify → settle so per-extension hooks gate on declared
+	// keys both in the verify and settle phases. Mirrors TS
+	// `paymentRequiredResponse.extensions` flowing into both calls.
+	DeclaredExtensions map[string]interface{}
+	// SkipHandler is set when an AfterVerifyHook signals that the resource handler
+	// should be bypassed and settlement performed inline.
+	SkipHandler *x402.SkipHandlerDirective
+	// CancellationDispatcher fires onVerifiedPaymentCanceled hooks if the resource
+	// handler errors or returns a non-2xx status before settlement runs. Set when
+	// Type is ResultPaymentVerified.
+	CancellationDispatcher *x402.PaymentCancellationDispatcher
 }
 
 // Result type constants
@@ -258,11 +292,12 @@ func Wrappedx402HTTPResourceServer(routes RoutesConfig, resourceServer *x402.X40
 
 	// Compile routes
 	for pattern, config := range normalizedRoutes {
-		verb, regex := parseRoutePattern(pattern)
+		verb, path, regex := parseRoutePattern(pattern)
 		server.compiledRoutes = append(server.compiledRoutes, CompiledRoute{
-			Verb:   verb,
-			Regex:  regex,
-			Config: config,
+			Verb:    verb,
+			Regex:   regex,
+			Config:  config,
+			Pattern: path,
 		})
 	}
 
@@ -305,6 +340,16 @@ func (s *x402HTTPResourceServer) validateRouteConfiguration() error {
 	var errors []RouteValidationError
 
 	for _, route := range s.compiledRoutes {
+		// Warn if wildcard routes are used with discovery extensions
+		if strings.Contains(route.Pattern, "*") && route.Config.Extensions != nil {
+			if _, hasBazaar := route.Config.Extensions["bazaar"]; hasBazaar {
+				log.Printf("[x402] Route %q %s: Wildcard (*) patterns with bazaar discovery extensions "+
+					"will auto-generate parameter names (var1, var2, ...). "+
+					"Consider using named parameters instead (e.g. /weather/:city) for better discovery metadata.",
+					route.Verb, route.Pattern)
+			}
+		}
+
 		for _, option := range route.Config.Accepts {
 			// Check 1: Is the scheme registered for this network?
 			if !s.HasRegisteredScheme(option.Network, option.Scheme) {
@@ -392,6 +437,7 @@ func (s *x402HTTPResourceServer) BuildPaymentRequirementsFromOptions(ctx context
 			Price:             resolvedPrice,
 			Network:           option.Network,
 			MaxTimeoutSeconds: option.MaxTimeoutSeconds,
+			Extra:             option.Extra,
 		}
 
 		// Use existing BuildPaymentRequirementsFromConfig for each option
@@ -408,11 +454,16 @@ func (s *x402HTTPResourceServer) BuildPaymentRequirementsFromOptions(ctx context
 
 // ProcessHTTPRequest handles an HTTP request and returns processing result
 func (s *x402HTTPResourceServer) ProcessHTTPRequest(ctx context.Context, reqCtx HTTPRequestContext, paywallConfig *PaywallConfig) HTTPProcessResult {
+	if reqCtx.Method == "" {
+		reqCtx.Method = reqCtx.Adapter.GetMethod()
+	}
+
 	// Find matching route
-	routeConfig := s.getRouteConfig(reqCtx.Path, reqCtx.Method)
+	routeConfig, routePattern := s.getRouteConfig(reqCtx.Path, reqCtx.Method)
 	if routeConfig == nil {
 		return HTTPProcessResult{Type: ResultNoPaymentRequired}
 	}
+	reqCtx.RoutePattern = routePattern
 
 	// Execute protected request hooks before any payment processing
 	for _, hook := range s.protectedRequestHooks {
@@ -491,10 +542,9 @@ func (s *x402HTTPResourceServer) ProcessHTTPRequest(ctx context.Context, reqCtx 
 	}
 
 	extensions := routeConfig.Extensions
-	// TODO: Add EnrichExtensions method if needed
-	// if extensions != nil && len(extensions) > 0 {
-	// 	extensions = s.EnrichExtensions(extensions, reqCtx)
-	// }
+	if len(extensions) > 0 {
+		extensions = s.EnrichExtensions(extensions, reqCtx)
+	}
 
 	if typedPayload == nil {
 		paymentRequired := s.CreatePaymentRequiredResponse(
@@ -571,17 +621,26 @@ func (s *x402HTTPResourceServer) ProcessHTTPRequest(ctx context.Context, reqCtx 
 		}
 	}
 
-	// Verify payment (type-safe)
-	_, verifyErr := s.VerifyPayment(ctx, *typedPayload, *matchingReqs)
+	// Verify payment (type-safe). Pass `extensions` so per-extension hooks
+	// (registered via ResourceServerExtensionHookProvider) gate on declared
+	// extension keys.
+	verifyResp, verifyErr := s.VerifyPaymentWithExtensions(ctx, *typedPayload, *matchingReqs, extensions)
 	if verifyErr != nil {
 		err = verifyErr
+		// Prefer InvalidReason (the protocol error code) over the free-form
+		// message so enrichers can match on a stable identifier.
 		errorMsg := err.Error()
+		var ve *x402.VerifyError
+		if errors.As(verifyErr, &ve) && ve.InvalidReason != "" {
+			errorMsg = ve.InvalidReason
+		}
 
-		paymentRequired := s.CreatePaymentRequiredResponse(
+		paymentRequired := s.CreatePaymentRequiredResponseWithPayload(
 			requirements,
 			resourceInfo,
 			errorMsg,
 			extensions,
+			typedPayload,
 		)
 
 		response, err := s.createHTTPResponseV2(paymentRequired, false, paywallConfig, "", nil)
@@ -602,23 +661,74 @@ func (s *x402HTTPResourceServer) ProcessHTTPRequest(ctx context.Context, reqCtx 
 	}
 
 	// Payment verified
-	return HTTPProcessResult{
+	result := HTTPProcessResult{
 		Type:                ResultPaymentVerified,
 		PaymentPayload:      typedPayload,
 		PaymentRequirements: matchingReqs,
+		DeclaredExtensions:  extensions,
 	}
+	if verifyResp != nil {
+		result.SkipHandler = verifyResp.SkipHandler
+	}
+	// Skip-handler runs inline; only attach a cancellation dispatcher when there
+	// is a downstream resource handler whose outcome can fail.
+	if result.SkipHandler == nil {
+		result.CancellationDispatcher = s.CreatePaymentCancellationDispatcherWithExtensions(ctx, *typedPayload, *matchingReqs, extensions)
+	}
+	return result
 }
 
 // RequiresPayment checks if a request requires payment based on route configuration
 func (s *x402HTTPResourceServer) RequiresPayment(reqCtx HTTPRequestContext) bool {
-	routeConfig := s.getRouteConfig(reqCtx.Path, reqCtx.Method)
+	method := reqCtx.Method
+	if method == "" {
+		method = reqCtx.Adapter.GetMethod()
+	}
+	routeConfig, _ := s.getRouteConfig(reqCtx.Path, method)
 	return routeConfig != nil
 }
 
-// ProcessSettlement handles settlement after successful response
-func (s *x402HTTPResourceServer) ProcessSettlement(ctx context.Context, payload types.PaymentPayload, requirements types.PaymentRequirements) *ProcessSettleResult {
-	// Settle payment (type-safe, no marshal needed)
-	settleResult, err := s.SettlePayment(ctx, payload, requirements)
+// SettlementOverridesHeader is the HTTP header name for settlement overrides.
+// The value is the canonical HTTP header form (Title-Case) so it works correctly
+// with both http.Header methods and direct map access.
+const SettlementOverridesHeader = "Settlement-Overrides"
+
+// MarshalSettlementOverrides serializes overrides to the JSON string suitable for
+// the SettlementOverridesHeader value. Returns an empty string on marshal failure
+// (which cannot happen for a well-formed SettlementOverrides value).
+func MarshalSettlementOverrides(overrides *x402.SettlementOverrides) string {
+	data, _ := json.Marshal(overrides)
+	return string(data)
+}
+
+// ProcessSettlement handles settlement after successful response.
+// If overrides is non-nil, it takes precedence. Otherwise, falls back to reading
+// the settlement-overrides header from the transport context's ResponseHeaders
+// (set by the route handler via SetSettlementOverrides). The header is deleted
+// from ResponseHeaders to prevent it from being sent to the client.
+//
+// declaredExtensions is forwarded to SettlePaymentWithExtensions so per-extension
+// settle hooks fire only when their key is declared on the route.
+func (s *x402HTTPResourceServer) ProcessSettlement(
+	ctx context.Context,
+	payload types.PaymentPayload,
+	requirements types.PaymentRequirements,
+	overrides *x402.SettlementOverrides,
+	transportContext *HTTPTransportContext,
+	declaredExtensions map[string]interface{},
+) *ProcessSettleResult {
+	resolved := overrides
+	if resolved == nil && transportContext != nil && transportContext.ResponseHeaders != nil {
+		if val := transportContext.ResponseHeaders.Get(SettlementOverridesHeader); val != "" {
+			var parsed x402.SettlementOverrides
+			if err := json.Unmarshal([]byte(val), &parsed); err == nil {
+				resolved = &parsed
+			}
+			transportContext.ResponseHeaders.Del(SettlementOverridesHeader)
+		}
+	}
+
+	settleResult, err := s.SettlePaymentWithExtensions(ctx, payload, requirements, resolved, declaredExtensions)
 	if err != nil {
 		return s.buildSettlementFailureResult(err.Error(), x402.Network(requirements.Network), "", nil)
 	}
@@ -659,6 +769,7 @@ func (s *x402HTTPResourceServer) buildSettlementFailureResult(errorReason string
 	if settleResult != nil {
 		failureResponse.Network = settleResult.Network
 		failureResponse.Payer = settleResult.Payer
+		failureResponse.ErrorMessage = settleResult.ErrorMessage
 	}
 
 	headers, err := s.createSettlementHeaders(&failureResponse)
@@ -691,8 +802,8 @@ func (s *x402HTTPResourceServer) buildSettlementFailureResult(errorReason string
 // Helper Methods
 // ============================================================================
 
-// getRouteConfig finds matching route configuration
-func (s *x402HTTPResourceServer) getRouteConfig(path, method string) *RouteConfig {
+// getRouteConfig finds matching route configuration and returns the route pattern
+func (s *x402HTTPResourceServer) getRouteConfig(path, method string) (*RouteConfig, string) {
 	normalizedPath := normalizePath(path)
 	upperMethod := strings.ToUpper(method)
 
@@ -700,11 +811,11 @@ func (s *x402HTTPResourceServer) getRouteConfig(path, method string) *RouteConfi
 		if route.Regex.MatchString(normalizedPath) &&
 			(route.Verb == "*" || route.Verb == upperMethod) {
 			config := route.Config // Make a copy
-			return &config
+			return &config, route.Pattern
 		}
 	}
 
-	return nil
+	return nil, ""
 }
 
 // extractPaymentV2 extracts V2 payment from headers (V2 only)
@@ -901,12 +1012,14 @@ func (s *x402HTTPResourceServer) generatePaywallHTML(paymentRequired x402.Paymen
 	appLogo := ""
 	testnet := false
 	currentURL := ""
+	var faucetURLs map[string]string
 
 	if config != nil {
 		appName = config.AppName
 		appLogo = config.AppLogo
 		testnet = config.Testnet
 		currentURL = config.CurrentURL
+		faucetURLs = config.FaucetURLs
 	}
 
 	// Use resource URL as currentUrl if not explicitly configured
@@ -925,7 +1038,8 @@ func (s *x402HTTPResourceServer) generatePaywallHTML(paymentRequired x402.Paymen
 			amount: %.6f,
 			testnet: %t,
 			displayAmount: %.2f,
-			currentUrl: "%s"
+			currentUrl: "%s",
+			faucetUrls: %s
 		};
 	</script>`,
 		string(requirementsJSON),
@@ -935,11 +1049,12 @@ func (s *x402HTTPResourceServer) generatePaywallHTML(paymentRequired x402.Paymen
 		testnet,
 		displayAmount,
 		html.EscapeString(currentURL),
+		marshalFaucetURLs(faucetURLs),
 	)
 
 	// Select template based on network
 	template := s.selectPaywallTemplate(paymentRequired)
-	return strings.Replace(template, "</body>", configScript+"</body>", 1)
+	return strings.Replace(template, "</head>", configScript+"\n</head>", 1)
 }
 
 // selectPaywallTemplate chooses the appropriate paywall template based on the network
@@ -989,12 +1104,14 @@ func injectPaywallConfig(template string, paymentRequired types.PaymentRequired,
 	appLogo := ""
 	testnet := false
 	currentURL := ""
+	var faucetURLs map[string]string
 
 	if config != nil {
 		appName = config.AppName
 		appLogo = config.AppLogo
 		testnet = config.Testnet
 		currentURL = config.CurrentURL
+		faucetURLs = config.FaucetURLs
 	}
 
 	if currentURL == "" && paymentRequired.Resource != nil {
@@ -1011,7 +1128,8 @@ func injectPaywallConfig(template string, paymentRequired types.PaymentRequired,
 			amount: %.6f,
 			testnet: %t,
 			displayAmount: %.2f,
-			currentUrl: "%s"
+			currentUrl: "%s",
+			faucetUrls: %s
 		};
 	</script>`,
 		string(requirementsJSON),
@@ -1021,9 +1139,22 @@ func injectPaywallConfig(template string, paymentRequired types.PaymentRequired,
 		testnet,
 		displayAmount,
 		html.EscapeString(currentURL),
+		marshalFaucetURLs(faucetURLs),
 	)
 
-	return strings.Replace(template, "</body>", configScript+"</body>", 1)
+	return strings.Replace(template, "</head>", configScript+"\n</head>", 1)
+}
+
+// marshalFaucetURLs renders FaucetURLs as a JS literal: a JSON object or `undefined`.
+func marshalFaucetURLs(urls map[string]string) string {
+	if len(urls) == 0 {
+		return "undefined"
+	}
+	encoded, err := json.Marshal(urls)
+	if err != nil {
+		return "undefined"
+	}
+	return string(encoded)
 }
 
 // ============================================================================
@@ -1031,7 +1162,7 @@ func injectPaywallConfig(template string, paymentRequired types.PaymentRequired,
 // ============================================================================
 
 // parseRoutePattern parses a route pattern like "GET /api/*"
-func parseRoutePattern(pattern string) (string, *regexp.Regexp) {
+func parseRoutePattern(pattern string) (string, string, *regexp.Regexp) {
 	parts := strings.Fields(pattern)
 
 	var verb, path string
@@ -1046,13 +1177,14 @@ func parseRoutePattern(pattern string) (string, *regexp.Regexp) {
 	// Convert pattern to regex
 	regexPattern := "^" + regexp.QuoteMeta(path)
 	regexPattern = strings.ReplaceAll(regexPattern, `\*`, `.*?`)
-	// Handle parameters like [id]
+	// Handle parameters: [param] (Next.js style) and :param (Express style)
 	regexPattern = paramRegex.ReplaceAllString(regexPattern, `[^/]+`)
+	regexPattern = colonParamRegex.ReplaceAllString(regexPattern, `[^/]+`)
 	regexPattern += "$"
 
 	regex := regexp.MustCompile(regexPattern)
 
-	return verb, regex
+	return verb, path, regex
 }
 
 // normalizePath normalizes a URL path for matching

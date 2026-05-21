@@ -9,8 +9,8 @@ package erc20approvalgassponsor
 import (
 	"context"
 
-	x402 "github.com/coinbase/x402/go"
-	evm "github.com/coinbase/x402/go/mechanisms/evm"
+	x402 "github.com/x402-foundation/x402/go"
+	evm "github.com/x402-foundation/x402/go/mechanisms/evm"
 )
 
 // ERC20ApprovalGasSponsoring is the extension identifier for the ERC-20 approval gas sponsoring extension.
@@ -76,6 +76,13 @@ type TransactionRequest struct {
 type Erc20ApprovalGasSponsoringSigner interface {
 	evm.FacilitatorEvmSigner
 	SendTransactions(ctx context.Context, transactions []TransactionRequest) ([]string, error)
+}
+
+// Erc20ApprovalGasSponsoringSimulator is an optional extension of Erc20ApprovalGasSponsoringSigner with multi-transaction simulation.
+// The signer owns the simulation strategy.
+type Erc20ApprovalGasSponsoringSimulator interface {
+	Erc20ApprovalGasSponsoringSigner
+	SimulateTransactions(ctx context.Context, transactions []TransactionRequest) (bool, error)
 }
 
 // Erc20ApprovalFacilitatorExtension carries the signer; registered with the facilitator.

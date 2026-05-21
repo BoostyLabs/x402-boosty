@@ -7,6 +7,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from ..schemas.hooks import PaymentCancellationDispatcher, ProtectedRequestHookResult
+
 if TYPE_CHECKING:
     from ..schemas import (
         Network,
@@ -77,6 +79,16 @@ class HTTPRequestContext:
     path: str
     method: str
     payment_header: str | None = None
+    route_pattern: str | None = None
+
+
+@dataclass
+class HTTPTransportContext:
+    """HTTP transport context for verify/settle hooks."""
+
+    request: HTTPRequestContext
+    response_body: Any = None
+    response_headers: dict[str, str] | None = None
 
 
 @dataclass
@@ -103,6 +115,8 @@ class HTTPProcessResult:
     response: HTTPResponseInstructions | None = None
     payment_payload: PaymentPayload | None = None
     payment_requirements: PaymentRequirements | None = None
+    declared_extensions: dict[str, Any] | None = None
+    cancellation_dispatcher: PaymentCancellationDispatcher | None = None
 
 
 @dataclass
@@ -125,13 +139,20 @@ class ProcessSettleResult:
 
 @dataclass
 class PaywallConfig:
-    """Configuration for paywall UI customization."""
+    """Configuration for paywall UI customization.
+
+    ``faucet_urls`` is a per-chain override keyed by CAIP-2 network identifier
+    (e.g. ``"eip155:84532"``). Wins over the paywall's curated default map for
+    the matching chain. Unmapped chains render "No faucet configured." rather
+    than a fallback link.
+    """
 
     app_name: str | None = None
     app_logo: str | None = None
     session_token_endpoint: str | None = None
     current_url: str | None = None
     testnet: bool = False
+    faucet_urls: dict[str, str] | None = None
 
 
 # Dynamic function types (supports both sync and async callbacks)
@@ -184,6 +205,12 @@ class RouteConfig:
     hook_timeout_seconds: float | None = None
 
 
+ProtectedRequestHook = Callable[
+    [HTTPRequestContext, RouteConfig],
+    ProtectedRequestHookResult | None | Awaitable[ProtectedRequestHookResult | None],
+]
+
+
 RoutesConfig = dict[str, RouteConfig] | RouteConfig
 
 
@@ -194,6 +221,7 @@ class CompiledRoute:
     verb: str
     regex: re.Pattern[str]
     config: RouteConfig
+    pattern: str = ""
 
 
 # ============================================================================

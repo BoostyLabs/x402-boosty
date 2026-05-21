@@ -1,11 +1,16 @@
 import { config } from "dotenv";
 import { x402Client, x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { UptoEvmScheme } from "@x402/evm/upto/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
-import { createSIWxClientHook, type SolanaSigner } from "@x402/extensions/sign-in-with-x";
+import {
+  createSIWxClientExtension,
+  type SIWxSigner,
+  type SolanaSigner,
+} from "@x402/extensions/sign-in-with-x";
 config();
 
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
@@ -23,25 +28,21 @@ const svmSigner = svmPrivateKey
   ? await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey))
   : undefined;
 
-// Configure client with available signers
 const client = new x402Client();
 if (evmSigner) {
   client.register("eip155:*", new ExactEvmScheme(evmSigner));
+  client.register("eip155:*", new UptoEvmScheme(evmSigner));
 }
 if (svmSigner) {
   client.register("solana:*", new ExactSvmScheme(svmSigner));
 }
 
-// Configure HTTP client with SIWX hooks for each signer
-// Each hook auto-detects the chain type and fails gracefully if mismatched
+const signers: SIWxSigner[] = [];
+if (evmSigner) signers.push(evmSigner);
+if (svmSigner) signers.push(svmSigner as unknown as SolanaSigner);
+client.registerExtension(createSIWxClientExtension({ signers }));
+
 const httpClient = new x402HTTPClient(client);
-if (evmSigner) {
-  httpClient.onPaymentRequired(createSIWxClientHook(evmSigner));
-}
-if (svmSigner) {
-  // Cast needed until @x402/extensions is rebuilt
-  httpClient.onPaymentRequired(createSIWxClientHook(svmSigner as SolanaSigner));
-}
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, httpClient);
 
@@ -103,6 +104,27 @@ async function demonstrateResource(path: string): Promise<void> {
 }
 
 /**
+ * Demonstrates auth-only SIWX flow (no payment required).
+ * The client hook handles the 402 → sign → retry cycle automatically.
+ */
+async function demonstrateAuthOnly(): Promise<void> {
+  const url = `${baseURL}/profile`;
+  console.log("\n--- /profile (auth-only, no payment) ---");
+
+  // fetchWithPayment handles auth-only routes the same way as paid routes:
+  // 402 → SIWX client hook signs the challenge → retry with signature
+  const response = await fetchWithPayment(url);
+  const body = await response.json();
+
+  if (response.ok) {
+    console.log("   ✓ Authenticated via SIWX (no payment required)");
+    console.log("   Response:", body);
+  } else {
+    console.log("   ✗ Auth failed:", body);
+  }
+}
+
+/**
  * Main entry point - demonstrates SIWX authentication flow.
  */
 async function main(): Promise<void> {
@@ -114,6 +136,9 @@ async function main(): Promise<void> {
   }
   console.log(`Server: ${baseURL}`);
 
+  // Auth-only: SIWX signature without payment
+  await demonstrateAuthOnly();
+
   await demonstrateResource("/weather");
 
   // Small delay to avoid facilitator race condition with rapid payments
@@ -121,7 +146,7 @@ async function main(): Promise<void> {
 
   await demonstrateResource("/joke");
 
-  console.log("\nDone. Each resource required payment once, then SIWX auth worked.");
+  console.log("\nDone. /profile used auth-only SIWX. /weather and /joke used payment + SIWX.");
 }
 
 main().catch(err => {
