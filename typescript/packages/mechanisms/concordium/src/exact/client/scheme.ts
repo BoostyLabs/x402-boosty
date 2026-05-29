@@ -74,7 +74,7 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    *
    * @param x402Version       - Must be 2
    * @param requirements      - Payment requirements from the resource server,
-   *                            must include `extra.sponsorAddress`
+   *                            must include `extra.feePayer`
    * @returns The x402 version and scheme-specific payment payload
    */
   async createPaymentPayload(
@@ -93,11 +93,11 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
       throw new Error("amount must be a non-empty decimal string");
     }
 
-    const sponsorAddress = requirements.extra?.sponsorAddress;
-    if (typeof sponsorAddress !== "string" || !sponsorAddress) {
+    const feePayer = requirements.extra?.feePayer;
+    if (typeof feePayer !== "string" || !feePayer) {
       throw new Error(
-        "requirements.extra.sponsorAddress is required. " +
-          "The resource server must include the facilitator's sponsor address in PaymentRequirements.",
+        "requirements.extra.feePayer is required. " +
+          "The resource server must include the facilitator's fee payer address in PaymentRequirements.",
       );
     }
 
@@ -105,9 +105,12 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
 
     const nonceResult = await grpcClient.getNextAccountNonce(this.signer.accountAddress);
 
-    const isNativeCcd = !requirements.asset || requirements.asset === "";
+    const isNativeCcd =
+      !requirements.asset ||
+      requirements.asset === "" ||
+      requirements.asset.toUpperCase() === "CCD";
 
-    const sponsorAccountAddress = AccountAddress.fromBase58(sponsorAddress);
+    const sponsorAccountAddress = AccountAddress.fromBase58(feePayer);
 
     const metadata = {
       sender: this.signer.accountAddress,
@@ -232,9 +235,7 @@ function toJsonSafe(value: unknown): unknown {
   }
   if (Array.isArray(value)) return value.map(toJsonSafe);
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, toJsonSafe(v)]),
-    );
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, toJsonSafe(v)]));
   }
   return value;
 }

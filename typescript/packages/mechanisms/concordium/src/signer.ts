@@ -185,7 +185,7 @@ function parseTransactionSummary(
       sender,
       recipient: (transfer.to as { address?: string })?.address,
       amount: amountMicroCcd.toString(),
-      asset: "",
+      asset: "CCD",
     };
   }
 

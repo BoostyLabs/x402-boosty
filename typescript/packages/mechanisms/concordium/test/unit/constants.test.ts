@@ -77,8 +77,8 @@ describe("Concordium Constants", () => {
       expect(CCD_DECIMALS).toBe(6);
     });
 
-    it("should use empty string for native CCD asset identifier", () => {
-      expect(CCD_ASSET_IDENTIFIER).toBe("");
+    it('should use "CCD" for native CCD asset identifier', () => {
+      expect(CCD_ASSET_IDENTIFIER).toBe("CCD");
     });
   });
 

@@ -10,6 +10,9 @@
 
 import { toFacilitatorAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
+import { ExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
+import { toConcordiumFacilitatorSigner } from "@x402/concordium/signer";
+import { CONCORDIUM_TESTNET_CAIP2, getConcordiumGrpcUrl, parseGrpcUrl } from "@x402/concordium/constants";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
   PaymentPayload,
@@ -18,6 +21,8 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "@x402/core/types";
+import { parseWallet, buildAccountSigner } from "@concordium/web-sdk";
+import { readFileSync } from "fs";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { UptoEvmScheme } from "@x402/evm/upto/facilitator";
@@ -57,6 +62,8 @@ const PORT = process.env.PORT || "4022";
 
 // Configuration - optional per network (alphabetic order)
 const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string | undefined;
+const ccdFacilitatorWalletPath = process.env.CCD_FACILITATOR_WALLET_PATH as string | undefined;
+const ccdNetwork = (process.env.CCD_NETWORK as string | undefined) ?? CONCORDIUM_TESTNET_CAIP2;
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string | undefined;
 const stellarPrivateKey = process.env.STELLAR_PRIVATE_KEY as string | undefined;
@@ -68,6 +75,7 @@ const hederaPrivateKey = process.env.HEDERA_PRIVATE_KEY;
 // Validate at least one private key is provided
 if (
   !avmPrivateKey &&
+  !ccdFacilitatorWalletPath &&
   !evmPrivateKey &&
   !svmPrivateKey &&
   !stellarPrivateKey &&
@@ -75,13 +83,14 @@ if (
   !(hederaAccountId && hederaPrivateKey)
 ) {
   console.error(
-    "❌ At least one of AVM_PRIVATE_KEY, EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
+    "❌ At least one of AVM_PRIVATE_KEY, CCD_FACILITATOR_WALLET_PATH, EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
   );
   process.exit(1);
 }
 
 // Network configuration (alphabetic order)
 const AVM_NETWORK = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="; // Algorand Testnet
+const CCD_NETWORK = ccdNetwork; // Concordium (default: testnet)
 const EVM_NETWORK = "eip155:84532"; // Base Sepolia
 const HEDERA_NETWORK = "hedera:testnet"; // Hedera Testnet
 const SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"; // Solana Devnet
@@ -114,6 +123,22 @@ if (avmPrivateKey) {
   const avmSigner = toFacilitatorAvmSigner(avmPrivateKey);
   console.info(`AVM Facilitator account: ${avmSigner.getAddresses()[0]}`);
   facilitator.register(AVM_NETWORK, new ExactAvmScheme(avmSigner));
+}
+
+// Register Concordium scheme if wallet export path is provided
+if (ccdFacilitatorWalletPath) {
+  const sponsorWallet = parseWallet(readFileSync(ccdFacilitatorWalletPath, "utf8"));
+  const sponsorAddress = sponsorWallet.value.address;
+  const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(CCD_NETWORK));
+
+  const signer = toConcordiumFacilitatorSigner(
+    sponsorAddress,
+    buildAccountSigner(sponsorWallet),
+    { host, port, useTls: true },
+  );
+
+  facilitator.register(CCD_NETWORK, new ExactConcordiumScheme({ signer }));
+  console.info(`CCD Facilitator account: ${sponsorAddress} on ${CCD_NETWORK}`);
 }
 
 // Register EVM scheme if private key is provided

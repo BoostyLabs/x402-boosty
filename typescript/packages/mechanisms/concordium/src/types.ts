@@ -14,7 +14,7 @@ export interface TransactionInfo {
   sender: string;
   recipient?: string;
   amount?: string;
-  /** "" for native CCD, token symbol for PLT (e.g. "EURR") */
+  /** "CCD" for native CCD, token symbol for PLT (e.g. "EURR") */
   asset?: string;
 }
 
@@ -33,7 +33,12 @@ export interface SignableV1TransactionHeader {
   /** Sponsor information */
   sponsor: {
     /** Facilitator's account address (base58check) */
-    account: string;
+    address?: string;
+    /**
+     * Backward-compat alias used by some SDK JSON shapes.
+     * Prefer `address`.
+     */
+    account?: string;
     /** Number of sponsor credential signatures */
     numSignatures: number;
   };

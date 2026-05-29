@@ -47,7 +47,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    * Creates a new ExactConcordiumScheme instance.
    *
    * @param sponsorAddress - Facilitator's sponsor account address (base58check).
-   *   Injected into `PaymentRequirements.extra.sponsorAddress` so clients know
+   *   Injected into `PaymentRequirements.extra.feePayer` so clients know
    *   which address to nominate as sponsor in their V1 transaction header.
    */
   constructor(private readonly sponsorAddress?: string) {}
@@ -164,7 +164,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
     return {
       amount: this.toSmallestUnits(String(amount), CCD_NATIVE.decimals),
-      asset: "",
+      asset: "CCD",
       extra: { type: "native", symbol: "CCD", decimals: CCD_NATIVE.decimals },
     };
   }
@@ -201,7 +201,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       ...requirements,
       extra: {
         ...((requirements.extra as Record<string, unknown>) ?? {}),
-        sponsorAddress: this.sponsorAddress,
+        feePayer: this.sponsorAddress,
       },
     });
   }
@@ -220,7 +220,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       const amount = this.toSmallestUnits(price.amount, CCD_NATIVE.decimals);
       return {
         amount,
-        asset: "",
+        asset: "CCD",
         extra: {
           type: "native",
           symbol: "CCD",

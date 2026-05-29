@@ -108,11 +108,11 @@ describe("Concordium Types", () => {
         sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
         recipient: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
         amount: "1000000",
-        asset: "",
+        asset: "CCD",
       };
 
       expect(info.status).toBe("finalized");
-      expect(info.asset).toBe("");
+      expect(info.asset).toBe("CCD");
     });
 
     it("should represent a PLT transfer", () => {

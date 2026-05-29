@@ -34,8 +34,8 @@ export const CONCORDIUM_ADDRESS_REGEX =
 /** Default decimals for native CCD */
 export const CCD_DECIMALS = 6;
 
-/** Native CCD uses empty string as asset identifier */
-export const CCD_ASSET_IDENTIFIER = "";
+/** Native CCD uses "CCD" as asset identifier (Concordium-specific convention) */
+export const CCD_ASSET_IDENTIFIER = "CCD";
 
 /**
  * Maximum allowed transaction expiry offset in seconds (spec Rule 7).

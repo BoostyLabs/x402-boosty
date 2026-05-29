@@ -38,7 +38,7 @@ describe("Concordium Signer", () => {
           sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
           recipient: sponsorAddress,
           amount: "1000000",
-          asset: "",
+          asset: "CCD",
         }),
       };
     }
@@ -65,7 +65,7 @@ describe("Concordium Signer", () => {
       expect(info.status).toBe("finalized");
       expect(info.txHash).toBe("abcdef1234567890");
       expect(info.amount).toBe("1000000");
-      expect(info.asset).toBe("");
+      expect(info.asset).toBe("CCD");
     });
 
     it("should return tx hash from submitTransaction", async () => {

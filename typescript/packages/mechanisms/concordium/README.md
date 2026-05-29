@@ -36,6 +36,11 @@ The client never broadcasts — the facilitator handles submission after sponsor
 | Native | CCD | Native Concordium token | 6 |
 | PLT | EURR, USDR, etc. | PLT standard tokens | 6 |
 
+## Testnet Faucets
+
+- **CCD (native, testnet):** Use the Concordium Wallet (Testnet) “faucet / request CCD” flow to fund an account.
+- **PLT (testnet):** There is no universal faucet for arbitrary PLT tokens; for testing, use a token issuer’s test distribution (if available) or mint a test PLT token yourself on testnet/devnet.
+
 ## Usage
 
 ### 1. Client Setup
@@ -60,7 +65,7 @@ const scheme = new ExactConcordiumScheme(signer);
 // createPaymentPayload is called automatically by x402 client internals:
 // 1. Fetches sender nonce from node
 // 2. Builds CCD or PLT transfer
-// 3. Sets facilitator as sponsor (from requirements.extra.sponsorAddress)
+// 3. Sets facilitator as sponsor (from requirements.extra.feePayer)
 // 4. Signs as sender via Transaction.sign()
 // 5. Returns { signedTransaction, sender } payload
 ```
@@ -76,7 +81,7 @@ const scheme = new ExactConcordiumScheme(signer, {
 
 ### 2. Server Setup
 
-The server registers assets and builds `PaymentRequirements`. The `sponsorAddress` parameter is injected into `extra.sponsorAddress` so clients know which address to name as sponsor.
+The server registers assets and builds `PaymentRequirements`. The `sponsorAddress` parameter is injected into `extra.feePayer` so clients know which address to name as sponsor.
 
 ```typescript
 import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
@@ -165,7 +170,7 @@ const scheme = new ExactConcordiumScheme({
      │─────────────────>│                    │                     │
      │                  │                    │                     │
      │  2. 402 + PaymentRequirements         │                     │
-     │     (includes extra.sponsorAddress)   │                     │
+     │     (includes extra.feePayer)         │                     │
      │<─────────────────│                    │                     │
      │                  │                    │                     │
      │  3. Fetch nonce from node             │                     │

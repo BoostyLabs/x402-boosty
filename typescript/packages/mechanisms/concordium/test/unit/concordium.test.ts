@@ -49,7 +49,7 @@ describe("@x402/concordium", () => {
       const requirements: PaymentRequirements = {
         scheme: "exact",
         network: CONCORDIUM_TESTNET_CAIP2,
-        asset: "",
+        asset: "CCD",
         amount: "1000000",
         payTo: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
         maxTimeoutSeconds: 60,
@@ -62,7 +62,7 @@ describe("@x402/concordium", () => {
       };
 
       const enhanced = await server.enhancePaymentRequirements(requirements, supportedKind, []);
-      expect(enhanced.extra?.sponsorAddress).toBe(sponsorAddress);
+      expect(enhanced.extra?.feePayer).toBe(sponsorAddress);
     });
 
     it("should not inject sponsorAddress when none configured", async () => {
@@ -70,7 +70,7 @@ describe("@x402/concordium", () => {
       const requirements: PaymentRequirements = {
         scheme: "exact",
         network: CONCORDIUM_TESTNET_CAIP2,
-        asset: "",
+        asset: "CCD",
         amount: "1000000",
         payTo: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
         maxTimeoutSeconds: 60,
@@ -83,7 +83,7 @@ describe("@x402/concordium", () => {
       };
 
       const enhanced = await server.enhancePaymentRequirements(requirements, supportedKind, []);
-      expect(enhanced.extra?.sponsorAddress).toBeUndefined();
+      expect(enhanced.extra?.feePayer).toBeUndefined();
     });
 
     it("should register and retrieve PLT assets", () => {
@@ -111,7 +111,7 @@ describe("@x402/concordium", () => {
       const result = await server.parsePrice("10", CONCORDIUM_TESTNET_CAIP2);
 
       expect(result.amount).toBe("10000000");
-      expect(result.asset).toBe("");
+      expect(result.asset).toBe("CCD");
     });
 
     it("should parse fractional CCD price", async () => {
@@ -119,7 +119,7 @@ describe("@x402/concordium", () => {
       const result = await server.parsePrice("10.5", CONCORDIUM_TESTNET_CAIP2);
 
       expect(result.amount).toBe("10500000");
-      expect(result.asset).toBe("");
+      expect(result.asset).toBe("CCD");
     });
 
     it("should parse PLT asset amount", async () => {
@@ -163,7 +163,7 @@ describe("@x402/concordium", () => {
       const extra = facilitator.getExtra(CONCORDIUM_TESTNET_CAIP2);
 
       expect(extra).toBeDefined();
-      expect(extra?.sponsorAddress).toBe("4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW");
+      expect(extra?.feePayer).toBe("4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW");
     });
 
     it("should return signer address in getSigners", () => {
@@ -196,7 +196,7 @@ describe("@x402/concordium", () => {
           scheme: "exact",
           network: CONCORDIUM_TESTNET_CAIP2,
           amount: "1000000",
-          asset: "",
+          asset: "CCD",
           payTo: "3kBx",
           maxTimeoutSeconds: 60,
           extra: {},
@@ -241,10 +241,10 @@ describe("@x402/concordium", () => {
           scheme: "exact",
           network: CONCORDIUM_TESTNET_CAIP2,
           amount: "1000000",
-          asset: "",
+          asset: "CCD",
           payTo: "4Fmi",
           maxTimeoutSeconds: 60,
-          extra: {},
+          extra: { feePayer: "4Fmi" },
         },
       );
 
@@ -289,10 +289,10 @@ describe("@x402/concordium", () => {
           scheme: "exact",
           network: CONCORDIUM_TESTNET_CAIP2,
           amount: "1000000",
-          asset: "",
+          asset: "CCD",
           payTo: "4Fmi",
           maxTimeoutSeconds: 60,
-          extra: {},
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
         },
       );
 
@@ -337,10 +337,10 @@ describe("@x402/concordium", () => {
           scheme: "exact",
           network: CONCORDIUM_TESTNET_CAIP2,
           amount: "1000000",
-          asset: "",
+          asset: "CCD",
           payTo: "4Fmi",
           maxTimeoutSeconds: 60,
-          extra: {},
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
         },
       );
 

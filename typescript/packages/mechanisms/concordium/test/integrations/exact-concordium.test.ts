@@ -101,16 +101,16 @@ class ConcordiumFacilitatorClient implements FacilitatorClient {
  *
  * @param payTo - The recipient address
  * @param amount - The payment amount in atomic units
- * @param sponsorAddress - The sponsor account address
- * @param asset - Asset identifier (empty for CCD)
+ * @param feePayer - The facilitator fee payer (sponsor) account address
+ * @param asset - Asset identifier ("CCD" for native)
  * @param network - The network identifier
  * @returns Payment requirements object
  */
 function buildConcordiumPaymentRequirements(
   payTo: string,
   amount: string,
-  sponsorAddress: string,
-  asset = "",
+  feePayer: string,
+  asset = "CCD",
   network: Network = CONCORDIUM_TESTNET_CAIP2,
 ): PaymentRequirements {
   return {
@@ -120,7 +120,7 @@ function buildConcordiumPaymentRequirements(
     amount,
     payTo,
     maxTimeoutSeconds: 60,
-    extra: { sponsorAddress },
+    extra: { feePayer },
   };
 }
 

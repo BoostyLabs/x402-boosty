@@ -38,12 +38,15 @@ cp .env-local .env
 
 and fill required environment variables:
 
+- `CCD_WALLET_PATH` - Concordium wallet export path for Concordium payments (optional; `all-networks`)
 - `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
 - `SVM_PRIVATE_KEY` - Solana private key for SVM payments
 - `STELLAR_PRIVATE_KEY` - Stellar secret key (starts with `S`) for signing Stellar payments
 - `HEDERA_ACCOUNT_ID` - Hedera account id for Hedera payments (optional)
 - `HEDERA_PRIVATE_KEY` - Hedera **ECDSA** private key (0x-prefixed or DER-encoded) for Hedera payments (optional)
 - `HEDERA_NETWORK` - Hedera network (optional, defaults to `hedera:testnet`)
+
+> **Concordium Testnet:** Fund a testnet account via the Concordium Wallet (Testnet) faucet / “request CCD” flow.
 
 2. Install and build all packages from the typescript examples root:
 
