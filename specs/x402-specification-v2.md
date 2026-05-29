@@ -120,7 +120,7 @@ Each `PaymentRequirements` object in the `accepts` array contains:
 | `scheme`            | `string` | Required | Payment scheme identifier (e.g., "exact")                                                                                 |
 | `network`           | `string` | Required | Blockchain network identifier in CAIP-2 format (e.g., "eip155:84532")                                                     |
 | `amount`            | `string` | Required | Required payment amount in atomic token units                                                                             |
-| `asset`             | `string` | Required | Token contract address or ISO 4217 currency code for fiat; an empty string ("") MAY represent the network's native asset  |
+| `asset`             | `string` | Required | Token contract address or ISO 4217 currency code for fiat     |
 | `payTo`             | `string` | Required | Recipient wallet address or role constant (e.g., "merchant")                                                              |
 | `maxTimeoutSeconds` | `number` | Required | Maximum time allowed for payment completion                                                                               |
 | `extra`             | `object` | Optional | Scheme-specific additional information                                                                                    |

@@ -37,7 +37,7 @@ In addition to the standard x402 `PaymentRequirements` fields, the `exact` schem
   "scheme": "exact",
   "network": "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
   "amount": "1000000",
-  "asset": "",
+  "asset": "CCD",
   "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
   "maxTimeoutSeconds": 60,
   "extra": {
@@ -47,12 +47,11 @@ In addition to the standard x402 `PaymentRequirements` fields, the `exact` schem
 ```
 
 - `asset`: Identifies the payment asset for this transaction.
-  - `""` (empty string): Native CCD. This is the default.
+  - `"CCD"`: Native CCD. This is the default.
   - Token symbol (e.g., `"EURR"`): PLT token identified by its registered symbol.
 - `extra.feePayer`: The account address of the facilitator fee payer (Concordium sponsor) that will sponsor the transaction fees.
 
 Notes:
-- The core x402 specification allows `asset=""` to represent the network's native asset.
 - On Concordium, PLT tokens have unique registered symbols; this scheme uses the registered symbol as the `asset` identifier.
 
 ### Network Identifiers
@@ -68,7 +67,7 @@ Concordium uses CAIP-2 format with the `ccd` namespace:
 
 | Asset Type | Format       | Example  |
 |------------|--------------|----------|
-| Native CCD | Empty string | `""`     |
+| Native CCD | Token symbol | `"CCD"`  |
 | PLT Token  | Token symbol | `"EURR"` |
 
 ### Amount Format
@@ -109,15 +108,15 @@ Full `PaymentPayload` object (native CCD):
     "description": "Access to premium market data",
     "mimeType": "application/json"
   },
-  "accepted": {
-    "scheme": "exact",
-    "network": "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
-    "amount": "1000000",
-    "asset": "",
-    "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-    "maxTimeoutSeconds": 60,
-    "extra": {
-      "feePayer": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s"
+	  "accepted": {
+	    "scheme": "exact",
+	    "network": "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
+	    "amount": "1000000",
+	    "asset": "CCD",
+	    "payTo": "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+	    "maxTimeoutSeconds": 60,
+	    "extra": {
+	      "feePayer": "3JzqJH2FqYk9J8HjX3rJ6cH2xw6sQJ5dXfLw2v7Uo5W8x9Qk2s"
     }
   },
   "payload": {
@@ -220,7 +219,7 @@ A facilitator verifying an `exact`-scheme Concordium payment MUST enforce all of
 
 4. Transfer destination
 
-- For native CCD (`asset` is `""`): the `toAddress` in the simple transfer payload MUST equal `PaymentRequirements.payTo`.
+- For native CCD (`asset` is `"CCD"`): the `toAddress` in the simple transfer payload MUST equal `PaymentRequirements.payTo`.
 - For PLT tokens: the `recipient` in the token update operations MUST equal `PaymentRequirements.payTo`.
 
 5. Amount (exact match)
