@@ -6,6 +6,7 @@ import {
   SchemeNetworkServer,
   MoneyParser,
 } from "@x402/core/types";
+import { convertToTokenAmount, numberToDecimalString, parseMoneyString } from "@x402/core/utils";
 
 /**
  * Concordium asset information
@@ -42,15 +43,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
   /** Custom money parser chain — tried in registration order before default */
   private moneyParsers: MoneyParser[] = [];
-
-  /**
-   * Creates a new ExactConcordiumScheme instance.
-   *
-   * @param sponsorAddress - Facilitator's sponsor account address (base58check).
-   *   Injected into `PaymentRequirements.extra.feePayer` so clients know
-   *   which address to nominate as sponsor in their V1 transaction header.
-   */
-  constructor(private readonly sponsorAddress?: string) {}
 
   /**
    * Register an asset for a network.
@@ -151,9 +143,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       return this.parseAssetAmount(price, network);
     }
 
-    if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(`USD prices not supported. Got: ${price}`);
-    }
+    const isUsdPrice = typeof price === "string" && price.startsWith("$");
 
     const amount = this.parseMoneyToDecimal(price);
 
@@ -162,46 +152,44 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       if (result !== null) return result;
     }
 
+    if (isUsdPrice) {
+      throw new Error(`USD prices not supported. Got: ${price}`);
+    }
+
     return {
-      amount: this.toSmallestUnits(String(amount), CCD_NATIVE.decimals),
+      amount: convertToTokenAmount(numberToDecimalString(amount), CCD_NATIVE.decimals),
       asset: "CCD",
       extra: { type: "native", symbol: "CCD", decimals: CCD_NATIVE.decimals },
     };
   }
 
   /**
-   * Enhance payment requirements (no-op for Concordium).
+   * Enhance payment requirements with facilitator-announced fee payer metadata.
    *
    * @param requirements - Payment requirements to enhance
-   * @param _supportedKind - Supported payment kind configuration (unused)
-   * @param _supportedKind.x402Version - X402 protocol version (unused)
-   * @param _supportedKind.scheme - Payment scheme identifier (unused)
-   * @param _supportedKind.network - Network identifier (unused)
-   * @param _supportedKind.extra - Extra configuration options (unused)
-   * @param _extensionKeys - Extension keys to apply (unused)
+   * @param supportedKind - Supported payment kind configuration
+   * @param supportedKind.x402Version - X402 protocol version
+   * @param supportedKind.scheme - Payment scheme identifier
+   * @param supportedKind.network - Network identifier
+   * @param supportedKind.extra - Extra facilitator metadata
+   * @param _ - Extension keys to apply (unused)
    * @returns Enhanced payment requirements
    */
   enhancePaymentRequirements(
     requirements: PaymentRequirements,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _supportedKind: {
+    supportedKind: {
       x402Version: number;
       scheme: string;
       network: Network;
       extra?: Record<string, unknown>;
     },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _extensionKeys: string[],
+    _: string[],
   ): Promise<PaymentRequirements> {
-    if (!this.sponsorAddress) {
-      return Promise.resolve(requirements);
-    }
-
     return Promise.resolve({
       ...requirements,
       extra: {
         ...((requirements.extra as Record<string, unknown>) ?? {}),
-        feePayer: this.sponsorAddress,
+        feePayer: supportedKind.extra?.feePayer,
       },
     });
   }
@@ -217,7 +205,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     const assetSymbol = price.asset || "";
 
     if (!assetSymbol || assetSymbol.toUpperCase() === "CCD") {
-      const amount = this.toSmallestUnits(price.amount, CCD_NATIVE.decimals);
+      const amount = convertToTokenAmount(String(price.amount), CCD_NATIVE.decimals);
       return {
         amount,
         asset: "CCD",
@@ -259,65 +247,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   }
 
   /**
-   * Resolves asset info from extra metadata.
-   *
-   * @param network - Network identifier
-   * @param extra - Extra metadata containing asset info
-   * @returns Resolved asset info
-   */
-  private resolveAsset(network: Network, extra?: Record<string, unknown>): ConcordiumAssetInfo {
-    if (!extra?.asset) {
-      return CCD_NATIVE;
-    }
-
-    const symbol = extra.asset;
-
-    if (typeof symbol !== "string") {
-      throw new Error(`extra.asset must be a string symbol. Got: ${typeof symbol}`);
-    }
-
-    if (symbol.toUpperCase() === "CCD") {
-      return CCD_NATIVE;
-    }
-
-    const asset = this.getAsset(network, symbol);
-    if (!asset) {
-      const supported = this.getSupportedSymbols(network);
-      throw new Error(
-        `Unknown asset "${symbol}" on ${network}. ` +
-          `Registered: CCD${supported.length ? ", " + supported.join(", ") : ""}. ` +
-          `Use registerAsset() to add.`,
-      );
-    }
-
-    return asset;
-  }
-
-  /**
-   * Convert human-readable amount to the smallest units.
-   *
-   * @param amount - Human-readable amount
-   * @param decimals - Number of decimal places
-   * @returns Amount in smallest units
-   * @example
-   * toSmallestUnits("10", 6) // "10000000"
-   * toSmallestUnits("10.5", 6) // "10500000"
-   * toSmallestUnits(10, 6) // "10000000"
-   */
-  private toSmallestUnits(amount: string | number, decimals: number): string {
-    const str = String(amount).trim();
-
-    if (!/^\d+(\.\d+)?$/.test(str)) {
-      throw new Error(`Invalid amount: ${amount}`);
-    }
-
-    const [whole, fraction = ""] = str.split(".");
-    const paddedFraction = fraction.padEnd(decimals, "0").slice(0, decimals);
-
-    return (whole + paddedFraction).replace(/^0+/, "") || "0";
-  }
-
-  /**
    * Convert to whole units (for PLT).
    *
    * @param amount - Amount to convert
@@ -345,13 +274,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
    */
   private parseMoneyToDecimal(money: string | number): number {
     if (typeof money === "number") return money;
-
-    const clean = money.replace(/^\$/, "").trim();
-    const n = parseFloat(clean);
-
-    if (isNaN(n)) throw new Error(`Invalid money format: "${money}"`);
-
-    return n;
+    return parseMoneyString(money);
   }
 
   /**

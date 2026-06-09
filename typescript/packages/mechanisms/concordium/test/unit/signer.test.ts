@@ -25,6 +25,7 @@ describe("Concordium Signer", () => {
           accountThreshold: 1,
           accountCredentials: {},
         }),
+        getTokenBalance: vi.fn().mockResolvedValue(1_000_000n),
         addSponsorSignature: vi.fn().mockResolvedValue({
           version: 1,
           header: {},
@@ -53,6 +54,7 @@ describe("Concordium Signer", () => {
       const signer = createMockSigner("4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW");
       expect(signer.getAddress).toBeDefined();
       expect(signer.getAccountInfo).toBeDefined();
+      expect(signer.getTokenBalance).toBeDefined();
       expect(signer.addSponsorSignature).toBeDefined();
       expect(signer.submitTransaction).toBeDefined();
       expect(signer.waitForFinalization).toBeDefined();

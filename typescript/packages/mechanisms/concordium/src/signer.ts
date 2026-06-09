@@ -5,6 +5,8 @@ import {
   TransactionHash,
   CcdAmount,
   AccountInfo,
+  Token,
+  TokenId,
 } from "@concordium/web-sdk";
 import { Transaction } from "@concordium/web-sdk/transactions";
 import type { SignableV1Transaction, TransactionInfo, TransactionStatus } from "./types";
@@ -50,6 +52,9 @@ export interface FacilitatorConcordiumSigner {
 
   /** Waits for finalization and returns on-chain details. */
   waitForFinalization(txHash: string, timeoutMs?: number): Promise<TransactionInfo>;
+
+  /** Returns the sender's PLT balance in smallest units for the given token id. */
+  getTokenBalance(address: string, tokenId: string): Promise<bigint | undefined>;
 }
 
 /**
@@ -67,7 +72,7 @@ export interface FacilitatorConcordiumSigner {
  * @example
  * ```typescript
  * import { parseWallet, buildAccountSigner } from "@concordium/web-sdk";
- * import { getConcordiumGrpcUrl, parseGrpcUrl } from "@x402/concordium/constants";
+ * import { getConcordiumGrpcUrl, parseGrpcUrl } from "@x402/concordium";
  *
  * const walletExport = parseWallet(readFileSync("./sponsor.export", "utf8"));
  * const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(network));
@@ -148,6 +153,12 @@ export function toConcordiumFacilitatorSigner(
       }
 
       return parseTransactionSummary(txHash, status, sender, summary.summary);
+    },
+
+    async getTokenBalance(address: string, tokenId: string): Promise<bigint | undefined> {
+      const token = await Token.fromId(grpcClient, TokenId.fromString(tokenId));
+      const balance = await Token.balanceOf(token, AccountAddress.fromBase58(address));
+      return balance?.value;
     },
   };
 }

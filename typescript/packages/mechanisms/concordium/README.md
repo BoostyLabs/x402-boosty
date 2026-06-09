@@ -14,7 +14,7 @@ This package provides three components for handling x402 payments on Concordium:
 
 - **Client** — Builds and sender-signs a V1 sponsored transaction, returning the partially-signed payload
 - **Facilitator** — Verifies the payload against 9 security rules, adds sponsor signature, submits to the network, and waits for finalization
-- **Server** — Builds `PaymentRequirements` with price parsing, asset registration, and sponsor address injection
+- **Server** — Builds `PaymentRequirements` with price parsing, asset registration, and facilitator-provided `feePayer` enrichment
 
 ## Sponsored Transaction Flow
 
@@ -38,8 +38,22 @@ The client never broadcasts — the facilitator handles submission after sponsor
 
 ## Testnet Faucets
 
-- **CCD (native, testnet):** Use the Concordium Wallet (Testnet) “faucet / request CCD” flow to fund an account.
-- **PLT (testnet):** There is no universal faucet for arbitrary PLT tokens; for testing, use a token issuer’s test distribution (if available) or mint a test PLT token yourself on testnet/devnet.
+- **CCD (native, testnet):**
+  1. Set up the Concordium Wallet for Web on **Testnet**.
+  2. Open your testnet account.
+  3. Go to **Activity**.
+  4. Click **Request CCD**.
+  5. The account is credited with test CCD shortly after.
+  - Official guide: https://docs.concordium.com/en/mainnet/docs/plt/setup-guide/request-ccd.html
+  - Note: Concordium documents that each account can request test CCD only once, and only before it has incoming transactions.
+- **PLT (testnet):**
+  1. Fund your account with test CCD first.
+  2. Prepare the PLT metadata and token parameters.
+  3. Submit the official testnet PLT issuance request form.
+  4. Concordium issues the token manually to your nominated governance account.
+  5. Mint or distribute balances from that account for your tests.
+  - Official guide: https://docs.concordium.com/en/mainnet/tutorials/plt/request-plt.html
+  - There is no universal public faucet for arbitrary PLT symbols such as `EURR`; you must use an issuer-provided distribution or request your own test PLT.
 
 ## Usage
 
@@ -81,13 +95,12 @@ const scheme = new ExactConcordiumScheme(signer, {
 
 ### 2. Server Setup
 
-The server registers assets and builds `PaymentRequirements`. The `sponsorAddress` parameter is injected into `extra.feePayer` so clients know which address to name as sponsor.
+The server registers assets and builds `PaymentRequirements`. The facilitator announces the active `feePayer` in `/supported`, and the server copies it into `requirements.extra.feePayer` during `enhancePaymentRequirements()`.
 
 ```typescript
 import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 
-// Pass the facilitator's sponsor address so it's included in PaymentRequirements
-const scheme = new ExactConcordiumScheme("4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW");
+const scheme = new ExactConcordiumScheme();
 
 // Register PLT tokens (native CCD works by default)
 scheme
@@ -123,8 +136,12 @@ The facilitator verifies partially-signed transactions, adds its sponsor signatu
 
 ```typescript
 import { ExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
-import { toConcordiumFacilitatorSigner } from "@x402/concordium/signer";
-import { getConcordiumGrpcUrl, parseGrpcUrl, CONCORDIUM_MAINNET_CAIP2 } from "@x402/concordium/constants";
+import {
+  CONCORDIUM_MAINNET_CAIP2,
+  getConcordiumGrpcUrl,
+  parseGrpcUrl,
+  toConcordiumFacilitatorSigner,
+} from "@x402/concordium";
 import { parseWallet, buildAccountSigner, AccountAddress } from "@concordium/web-sdk";
 import { readFileSync } from "fs";
 
@@ -150,10 +167,6 @@ const scheme = new ExactConcordiumScheme({
   requireFinalization: true,      // default: true
   finalizationTimeoutMs: 60_000,  // default: 60000
   maxExpiryOffsetSeconds: 600,    // default: 600
-  supportedAssets: [
-    { symbol: "CCD", decimals: 6 },
-    { symbol: "EURR", decimals: 6 },
-  ],
 });
 
 // verify() and settle() are called by x402 facilitator internals
@@ -354,6 +367,7 @@ interface GrpcConfig {
 interface FacilitatorConcordiumSigner {
   getAddress(): string;
   getAccountInfo(address: string): Promise<AccountInfo>;
+  getTokenBalance(address: string, tokenId: string): Promise<bigint | undefined>;
   addSponsorSignature(tx: SignableV1Transaction): Promise<Transaction.JSON>;
   submitTransaction(signedTxJSON: Transaction.JSON): Promise<string>;
   waitForFinalization(txHash: string, timeoutMs?: number): Promise<TransactionInfo>;
@@ -364,11 +378,10 @@ interface FacilitatorConcordiumSigner {
 
 ```typescript
 interface ExactConcordiumSchemeConfig {
-  signer: FacilitatorConcordiumSigner;
+  signer: FacilitatorConcordiumSigner | FacilitatorConcordiumSigner[];
   requireFinalization?: boolean;        // default: true
   finalizationTimeoutMs?: number;       // default: 60000
   maxExpiryOffsetSeconds?: number;      // default: 600
-  supportedAssets?: Array<{ symbol: string; decimals: number }>;
 }
 ```
 

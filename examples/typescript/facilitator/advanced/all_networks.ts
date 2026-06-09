@@ -11,8 +11,12 @@
 import { toFacilitatorAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactConcordiumScheme } from "@x402/concordium/exact/facilitator";
-import { toConcordiumFacilitatorSigner } from "@x402/concordium/signer";
-import { CONCORDIUM_TESTNET_CAIP2, getConcordiumGrpcUrl, parseGrpcUrl } from "@x402/concordium/constants";
+import {
+  CONCORDIUM_TESTNET_CAIP2,
+  getConcordiumGrpcUrl,
+  parseGrpcUrl,
+  toConcordiumFacilitatorSigner,
+} from "@x402/concordium";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
   PaymentPayload,
@@ -125,7 +129,9 @@ if (avmPrivateKey) {
   facilitator.register(AVM_NETWORK, new ExactAvmScheme(avmSigner));
 }
 
-// Register Concordium scheme if wallet export path is provided
+// Register Concordium scheme if wallet export path is provided.
+// Concordium uses the wallet export here because the SDK helper builds the account signer
+// from the exported wallet structure rather than from a raw private key string.
 if (ccdFacilitatorWalletPath) {
   const sponsorWallet = parseWallet(readFileSync(ccdFacilitatorWalletPath, "utf8"));
   const sponsorAddress = sponsorWallet.value.address;

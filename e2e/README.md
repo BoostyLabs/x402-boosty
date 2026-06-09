@@ -86,6 +86,17 @@ Add the `-v` flag to any command for verbose output:
 
 Useful for debugging test failures or understanding the payment flow.
 
+### Concordium Offline Coverage
+
+The repo-level Concordium exact flow currently has a dedicated offline e2e regression:
+
+```bash
+pnpm test:concordium-offline
+```
+
+This covers the repo-level Concordium request/verify/settle flow without requiring
+live Concordium wallets or network access.
+
 ## Wallet Safety Warning
 
 **Use dedicated test wallets only. Do NOT use wallets that hold real funds.**

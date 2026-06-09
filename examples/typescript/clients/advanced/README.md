@@ -46,7 +46,20 @@ and fill required environment variables:
 - `HEDERA_PRIVATE_KEY` - Hedera **ECDSA** private key (0x-prefixed or DER-encoded) for Hedera payments (optional)
 - `HEDERA_NETWORK` - Hedera network (optional, defaults to `hedera:testnet`)
 
-> **Concordium Testnet:** Fund a testnet account via the Concordium Wallet (Testnet) faucet / “request CCD” flow.
+> **Concordium Testnet (CCD):**
+> 1. Set up Concordium Wallet for Web on **Testnet**.
+> 2. Open the account in the wallet.
+> 3. Go to **Activity**.
+> 4. Click **Request CCD**.
+> 5. Wait for the test CCD transfer to arrive.
+>    Official guide: https://docs.concordium.com/en/mainnet/docs/plt/setup-guide/request-ccd.html
+>
+> **Concordium Testnet (PLT):**
+> There is no universal public faucet for arbitrary PLT symbols.
+> To get test PLT funds, either:
+> - use a token issuer’s own test distribution for the symbol you want to use, or
+> - request your own PLT issuance on testnet, then mint/distribute balances from the nominated governance account.
+>   Official guide: https://docs.concordium.com/en/mainnet/tutorials/plt/request-plt.html
 
 2. Install and build all packages from the typescript examples root:
 

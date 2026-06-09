@@ -177,10 +177,6 @@ describe("Concordium Integration Tests", () => {
         signer: facilitatorSigner,
         requireFinalization: true,
         finalizationTimeoutMs: 90_000,
-        supportedAssets: [
-          { symbol: "CCD", decimals: 6 },
-          { symbol: "EURR", decimals: 6 },
-        ],
       });
       const facilitator = new x402Facilitator().register(
         CONCORDIUM_TESTNET_CAIP2,
@@ -189,7 +185,7 @@ describe("Concordium Integration Tests", () => {
 
       facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
       server = new x402ResourceServer(facilitatorClient);
-      server.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer(facilitatorAddress));
+      server.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer());
       await server.initialize();
     });
 
@@ -328,7 +324,6 @@ describe("Concordium Integration Tests", () => {
         signer: facilitatorSigner,
         requireFinalization: true,
         finalizationTimeoutMs: 90_000,
-        supportedAssets: [{ symbol: "CCD", decimals: 6 }],
       });
       const facilitator = new x402Facilitator().register(
         CONCORDIUM_TESTNET_CAIP2,
@@ -342,10 +337,7 @@ describe("Concordium Integration Tests", () => {
       client = new x402HTTPClient(paymentClient) as x402HTTPClient;
 
       const resourceServer = new x402ResourceServer(facilitatorClientWrapper);
-      resourceServer.register(
-        CONCORDIUM_TESTNET_CAIP2,
-        new ExactConcordiumServer(facilitatorAddress),
-      );
+      resourceServer.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer());
       await resourceServer.initialize();
 
       httpServer = new x402HTTPResourceServer(resourceServer, routes);
@@ -427,10 +419,6 @@ describe("Concordium Integration Tests", () => {
       const concordiumFacilitator = new ExactConcordiumFacilitator({
         signer: facilitatorSigner,
         requireFinalization: true,
-        supportedAssets: [
-          { symbol: "CCD", decimals: 6 },
-          { symbol: "EURR", decimals: 6 },
-        ],
       });
       const facilitator = new x402Facilitator().register(
         CONCORDIUM_TESTNET_CAIP2,
@@ -440,7 +428,7 @@ describe("Concordium Integration Tests", () => {
       const facilitatorClientWrapper = new ConcordiumFacilitatorClient(facilitator);
       server = new x402ResourceServer(facilitatorClientWrapper);
 
-      concordiumServer = new ExactConcordiumServer(facilitatorAddress);
+      concordiumServer = new ExactConcordiumServer();
       concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
       server.register(CONCORDIUM_TESTNET_CAIP2, concordiumServer);
       await server.initialize();

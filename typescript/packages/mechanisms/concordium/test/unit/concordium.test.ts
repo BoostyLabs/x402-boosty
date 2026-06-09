@@ -13,6 +13,20 @@ import {
   getExplorerTxUrl,
 } from "../../src/index";
 import type { PaymentRequirements } from "@x402/core/types";
+import type { FacilitatorConcordiumSigner } from "../../src/signer";
+
+function createMockFacilitatorSigner(
+  address = "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+): FacilitatorConcordiumSigner {
+  return {
+    getAddress: () => address,
+    getAccountInfo: vi.fn(),
+    getTokenBalance: vi.fn().mockResolvedValue(1_000_000n),
+    addSponsorSignature: vi.fn(),
+    submitTransaction: vi.fn(),
+    waitForFinalization: vi.fn(),
+  };
+}
 
 describe("@x402/concordium", () => {
   describe("exports", () => {
@@ -43,9 +57,9 @@ describe("@x402/concordium", () => {
       expect(server.scheme).toBe("exact");
     });
 
-    it("should inject sponsorAddress into payment requirements", async () => {
-      const sponsorAddress = "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW";
-      const server = new ExactConcordiumServer(sponsorAddress);
+    it("should inject feePayer from supported kind into payment requirements", async () => {
+      const feePayer = "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW";
+      const server = new ExactConcordiumServer();
       const requirements: PaymentRequirements = {
         scheme: "exact",
         network: CONCORDIUM_TESTNET_CAIP2,
@@ -59,13 +73,14 @@ describe("@x402/concordium", () => {
         x402Version: 2,
         scheme: "exact",
         network: CONCORDIUM_TESTNET_CAIP2,
+        extra: { feePayer },
       };
 
       const enhanced = await server.enhancePaymentRequirements(requirements, supportedKind, []);
-      expect(enhanced.extra?.feePayer).toBe(sponsorAddress);
+      expect(enhanced.extra?.feePayer).toBe(feePayer);
     });
 
-    it("should not inject sponsorAddress when none configured", async () => {
+    it("should leave feePayer undefined when facilitator metadata does not provide it", async () => {
       const server = new ExactConcordiumServer();
       const requirements: PaymentRequirements = {
         scheme: "exact",
@@ -142,6 +157,22 @@ describe("@x402/concordium", () => {
       );
     });
 
+    it("should allow USD prices when a money parser is registered", async () => {
+      const server = new ExactConcordiumServer();
+      server
+        .registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6)
+        .registerMoneyParser(async amount => ({
+          amount: amount.toString(),
+          asset: "EURR",
+          extra: { type: "plt", symbol: "EURR", decimals: 6 },
+        }));
+
+      const result = await server.parsePrice("$10", CONCORDIUM_TESTNET_CAIP2);
+
+      expect(result.amount).toBe("10");
+      expect(result.asset).toBe("EURR");
+    });
+
     it("should reject unknown assets", async () => {
       const server = new ExactConcordiumServer();
       await expect(
@@ -152,13 +183,7 @@ describe("@x402/concordium", () => {
 
   describe("ExactConcordiumFacilitator", () => {
     it("should return sponsorAddress in getExtra", () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
       const extra = facilitator.getExtra(CONCORDIUM_TESTNET_CAIP2);
 
@@ -167,13 +192,7 @@ describe("@x402/concordium", () => {
     });
 
     it("should return signer address in getSigners", () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
       const signers = facilitator.getSigners(CONCORDIUM_TESTNET_CAIP2);
 
@@ -181,17 +200,15 @@ describe("@x402/concordium", () => {
     });
 
     it("should reject missing payload", async () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
 
       const result = await facilitator.verify(
-        { x402Version: 2, accepted: {} as any, payload: null as any },
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: null as any,
+        },
         {
           scheme: "exact",
           network: CONCORDIUM_TESTNET_CAIP2,
@@ -208,19 +225,13 @@ describe("@x402/concordium", () => {
     });
 
     it("should reject wrong transaction version", async () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
 
       const result = await facilitator.verify(
         {
           x402Version: 2,
-          accepted: {} as any,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
           payload: {
             signedTransaction: {
               version: 0 as any,
@@ -253,19 +264,13 @@ describe("@x402/concordium", () => {
     });
 
     it("should reject sponsor mismatch", async () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
 
       const result = await facilitator.verify(
         {
           x402Version: 2,
-          accepted: {} as any,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
           payload: {
             signedTransaction: {
               version: 1,
@@ -301,19 +306,13 @@ describe("@x402/concordium", () => {
     });
 
     it("should reject expired transactions", async () => {
-      const mockSigner = {
-        getAddress: () => "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-        getAccountInfo: vi.fn(),
-        addSponsorSignature: vi.fn(),
-        submitTransaction: vi.fn(),
-        waitForFinalization: vi.fn(),
-      };
+      const mockSigner = createMockFacilitatorSigner();
       const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
 
       const result = await facilitator.verify(
         {
           x402Version: 2,
-          accepted: {} as any,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
           payload: {
             signedTransaction: {
               version: 1,
@@ -346,6 +345,21 @@ describe("@x402/concordium", () => {
 
       expect(result.isValid).toBe(false);
       expect(result.invalidReason).toContain("transaction_expired");
+    });
+
+    it("should support multiple facilitator signers for feePayer selection", () => {
+      const facilitator = new ExactConcordiumFacilitator({
+        signer: [
+          createMockFacilitatorSigner("4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW"),
+          createMockFacilitatorSigner("3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8"),
+        ],
+      });
+
+      expect(facilitator.getSigners(CONCORDIUM_TESTNET_CAIP2)).toEqual([
+        "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+        "3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8",
+      ]);
+      expect(facilitator.getExtra(CONCORDIUM_TESTNET_CAIP2)?.feePayer).toBeDefined();
     });
   });
 });
