@@ -66,17 +66,14 @@ and fill required environment variables:
 > **Hedera Testnet:** Get testnet HBAR from the [Hedera Faucet](https://portal.hedera.com/faucet).
 >
 > **Concordium Testnet (CCD):**
+>
 > 1. Set up Concordium Wallet for Web on **Testnet**.
 > 2. Open the account.
 > 3. Go to **Activity**.
 > 4. Click **Request CCD**.
-> 5. Wait for the test CCD transfer to arrive.
->    Official guide: https://docs.concordium.com/en/mainnet/docs/plt/setup-guide/request-ccd.html
+> 5. Wait for the test CCD transfer to arrive. Official guide: https://docs.concordium.com/en/mainnet/docs/plt/setup-guide/request-ccd.html
 >
-> **Concordium Testnet (PLT):**
-> The `all-networks` example uses `EURR` as the default Concordium stablecoin parser for USD-style prices.
-> There is no universal public faucet for arbitrary PLT symbols, so use an issuer-provided test distribution for `EURR` or request your own test PLT issuance:
-> https://docs.concordium.com/en/mainnet/tutorials/plt/request-plt.html
+> **Concordium Testnet (PLT):** The `all-networks` example uses `EURR` as the default Concordium stablecoin parser for USD-style prices. There is no universal public faucet for arbitrary PLT symbols, so use an issuer-provided test distribution for `EURR` or request your own test PLT issuance: https://docs.concordium.com/en/mainnet/tutorials/plt/request-plt.html
 
 2. Install and build all packages from the typescript examples root:
 
