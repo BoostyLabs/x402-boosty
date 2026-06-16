@@ -1,6 +1,6 @@
 {
   "name": "@x402/concordium",
-  "version": "1.0.0",
+  "version": "2.14.0",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
@@ -45,8 +45,7 @@
   },
   "dependencies": {
     "@x402/core": "workspace:*",
-    "@concordium/web-sdk": "^12.0.0",
-    "zod": "^3.24.2"
+    "@concordium/web-sdk": "^12.0.0"
   },
   "exports": {
     ".": {

@@ -20,12 +20,14 @@ describe("Concordium Signer", () => {
     function createMockSigner(sponsorAddress: string): FacilitatorConcordiumSigner {
       return {
         getAddress: () => sponsorAddress,
+        getNetwork: () => "ccd:*",
         getAccountInfo: vi.fn().mockResolvedValue({
           accountAddress: sponsorAddress,
           accountThreshold: 1,
           accountCredentials: {},
         }),
         getTokenBalance: vi.fn().mockResolvedValue(1_000_000n),
+        getTokenDecimals: vi.fn().mockResolvedValue(6),
         addSponsorSignature: vi.fn().mockResolvedValue({
           version: 1,
           header: {},

@@ -159,7 +159,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     return {
       amount: convertToTokenAmount(numberToDecimalString(amount), CCD_NATIVE.decimals),
       asset: "CCD",
-      extra: { type: "native", symbol: "CCD", decimals: CCD_NATIVE.decimals },
     };
   }
 
@@ -209,12 +208,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       return {
         amount,
         asset: "CCD",
-        extra: {
-          type: "native",
-          symbol: "CCD",
-          decimals: CCD_NATIVE.decimals,
-          ...price.extra,
-        },
+        extra: price.extra,
       };
     }
 
@@ -224,14 +218,9 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     }
 
     return {
-      amount: this.toWholeUnits(price.amount),
+      amount: convertToTokenAmount(String(price.amount), asset.decimals),
       asset: asset.symbol,
-      extra: {
-        type: asset.type,
-        symbol: asset.symbol,
-        decimals: asset.decimals,
-        ...price.extra,
-      },
+      extra: price.extra,
     };
   }
 

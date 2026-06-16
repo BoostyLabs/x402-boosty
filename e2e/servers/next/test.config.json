@@ -96,6 +96,13 @@
       "protocolFamily": "svm"
     },
     {
+      "path": "/api/exact/ccd",
+      "method": "GET",
+      "description": "Concordium endpoint using proxy middleware",
+      "requiresPayment": true,
+      "protocolFamily": "ccd"
+    },
+    {
       "path": "/api/exact/avm",
       "method": "GET",
       "description": "AVM endpoint using proxy middleware",
@@ -229,11 +236,14 @@
     }
   ],
   "environment": {
-    "required": ["PORT", "EVM_PAYEE_ADDRESS", "SVM_PAYEE_ADDRESS", "FACILITATOR_URL"],
+    "required": ["PORT", "FACILITATOR_URL"],
     "optional": [
       "AVM_PAYEE_ADDRESS",
       "APTOS_PAYEE_ADDRESS",
+      "CCD_PAYEE_ADDRESS",
+      "EVM_PAYEE_ADDRESS",
       "HEDERA_PAYEE_ADDRESS",
+      "SVM_PAYEE_ADDRESS",
       "STELLAR_PAYEE_ADDRESS",
       "TVM_PAYEE_ADDRESS",
       "TVM_NETWORK",

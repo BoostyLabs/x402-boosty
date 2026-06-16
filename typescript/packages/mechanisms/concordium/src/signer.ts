@@ -8,6 +8,7 @@ import {
   Token,
   TokenId,
 } from "@concordium/web-sdk";
+import type { Network } from "@x402/core/types";
 import { Transaction } from "@concordium/web-sdk/transactions";
 import type { SignableV1Transaction, TransactionInfo, TransactionStatus } from "./types";
 
@@ -41,6 +42,9 @@ export interface FacilitatorConcordiumSigner {
   /** Sponsor account address (base58check string). */
   getAddress(): string;
 
+  /** CAIP-2 network this signer is connected to. */
+  getNetwork(): Network;
+
   /** Fetches on-chain account info for cryptographic signature verification (Rule 8). */
   getAccountInfo(address: string): Promise<AccountInfo>;
 
@@ -55,6 +59,9 @@ export interface FacilitatorConcordiumSigner {
 
   /** Returns the sender's PLT balance in smallest units for the given token id. */
   getTokenBalance(address: string, tokenId: string): Promise<bigint | undefined>;
+
+  /** Returns the on-chain PLT decimals/exponent for the given token id. */
+  getTokenDecimals(tokenId: string): Promise<number>;
 }
 
 /**
@@ -66,7 +73,7 @@ export interface FacilitatorConcordiumSigner {
  *
  * @param sponsorAddress - Sponsor account address (base58check string)
  * @param sponsorSigner  - Built via `buildAccountSigner(parseWallet(walletFile))`
- * @param grpcConfig     - gRPC connection parameters
+ * @param grpcConfig     - gRPC connection parameters, optionally including the CAIP-2 network
  * @returns A FacilitatorConcordiumSigner instance
  *
  * @example
@@ -87,7 +94,7 @@ export interface FacilitatorConcordiumSigner {
 export function toConcordiumFacilitatorSigner(
   sponsorAddress: string,
   sponsorSigner: AccountSigner,
-  grpcConfig: GrpcConfig,
+  grpcConfig: GrpcConfig & { network?: Network },
 ): FacilitatorConcordiumSigner {
   const sponsorAccount = AccountAddress.fromBase58(sponsorAddress);
 
@@ -99,6 +106,10 @@ export function toConcordiumFacilitatorSigner(
   return {
     getAddress(): string {
       return sponsorAccount.toString();
+    },
+
+    getNetwork(): Network {
+      return grpcConfig.network ?? "ccd:*";
     },
 
     async getAccountInfo(address: string): Promise<AccountInfo> {
@@ -159,6 +170,11 @@ export function toConcordiumFacilitatorSigner(
       const token = await Token.fromId(grpcClient, TokenId.fromString(tokenId));
       const balance = await Token.balanceOf(token, AccountAddress.fromBase58(address));
       return balance?.value;
+    },
+
+    async getTokenDecimals(tokenId: string): Promise<number> {
+      const token = await Token.fromId(grpcClient, TokenId.fromString(tokenId));
+      return token.info.state.decimals;
     },
   };
 }

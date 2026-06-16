@@ -628,6 +628,7 @@ async function runTest() {
   const serverSvmAddress = process.env.SERVER_SVM_ADDRESS;
   const serverAvmAddress = process.env.SERVER_AVM_ADDRESS;
   const serverAptosAddress = process.env.SERVER_APTOS_ADDRESS;
+  const serverCcdAddress = process.env.SERVER_CCD_ADDRESS;
   const serverHederaAddress = process.env.SERVER_HEDERA_ADDRESS;
   const serverStellarAddress = process.env.SERVER_STELLAR_ADDRESS;
   const serverTvmAddress = process.env.SERVER_TVM_ADDRESS;
@@ -635,6 +636,7 @@ async function runTest() {
   const clientSvmPrivateKey = process.env.CLIENT_SVM_PRIVATE_KEY;
   const clientAvmPrivateKey = process.env.CLIENT_AVM_PRIVATE_KEY;
   const clientAptosPrivateKey = process.env.CLIENT_APTOS_PRIVATE_KEY;
+  const clientCcdWalletPath = process.env.CLIENT_CCD_WALLET_PATH;
   const clientHederaAccountId = process.env.CLIENT_HEDERA_ACCOUNT_ID;
   const clientHederaPrivateKey = process.env.CLIENT_HEDERA_PRIVATE_KEY;
   const clientStellarPrivateKey = process.env.CLIENT_STELLAR_PRIVATE_KEY;
@@ -643,6 +645,7 @@ async function runTest() {
   const facilitatorSvmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
   const facilitatorAvmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
   const facilitatorAptosPrivateKey = process.env.FACILITATOR_APTOS_PRIVATE_KEY;
+  const facilitatorCcdWalletPath = process.env.FACILITATOR_CCD_WALLET_PATH;
   const facilitatorHederaAccountId = process.env.FACILITATOR_HEDERA_ACCOUNT_ID;
   const facilitatorHederaPrivateKey = process.env.FACILITATOR_HEDERA_PRIVATE_KEY;
   const facilitatorStellarPrivateKey = process.env.FACILITATOR_STELLAR_PRIVATE_KEY;
@@ -727,6 +730,7 @@ async function runTest() {
   log(`   EVM Permit2 asset: ${evmPermit2Asset || '(missing)'} (${permit2AssetSource})`);
   log(`   SVM: ${networks.svm.name} (${networks.svm.caip2})`);
   log(`   APTOS: ${networks.aptos.name} (${networks.aptos.caip2})`);
+  log(`   CCD: ${networks.ccd.name} (${networks.ccd.caip2})`);
   log(`   HEDERA: ${networks.hedera.name} (${networks.hedera.caip2})`);
   log(`   STELLAR: ${networks.stellar.name} (${networks.stellar.caip2})`);
   log(`   TVM: ${networks.tvm.name} (${networks.tvm.caip2})`);
@@ -765,6 +769,11 @@ async function runTest() {
       ['SERVER_AVM_ADDRESS', serverAvmAddress],
       ['CLIENT_AVM_PRIVATE_KEY', clientAvmPrivateKey],
       ['FACILITATOR_AVM_PRIVATE_KEY', facilitatorAvmPrivateKey],
+    ],
+    ccd: [
+      ['SERVER_CCD_ADDRESS', serverCcdAddress],
+      ['CLIENT_CCD_WALLET_PATH', clientCcdWalletPath],
+      ['FACILITATOR_CCD_WALLET_PATH', facilitatorCcdWalletPath],
     ],
     hedera: [
       ['SERVER_HEDERA_ADDRESS', serverHederaAddress],
@@ -1119,6 +1128,7 @@ async function runTest() {
         EVM_NETWORK: networks.evm.caip2,
         SVM_NETWORK: networks.svm.caip2,
         APTOS_NETWORK: networks.aptos.caip2,
+        CCD_NETWORK: networks.ccd.caip2,
         STELLAR_NETWORK: networks.stellar.caip2,
         TVM_NETWORK: networks.tvm.caip2,
       },
@@ -1178,10 +1188,11 @@ async function runTest() {
     const isBatchSettlement = endpointUsesBatchSettlement(scenario.endpoint);
     const voucherSignerPrivateKey = process.env.CLIENT_EVM_VOUCHER_SIGNER_PRIVATE_KEY;
     const baseClientConfig: ClientConfig = {
-      evmPrivateKey: clientEvmPrivateKey!,
-      svmPrivateKey: clientSvmPrivateKey!,
+      evmPrivateKey: clientEvmPrivateKey || '',
+      svmPrivateKey: clientSvmPrivateKey || '',
       avmPrivateKey: clientAvmPrivateKey || '',
       aptosPrivateKey: clientAptosPrivateKey || '',
+      ccdWalletPath: clientCcdWalletPath || '',
       hederaAccountId: clientHederaAccountId || '',
       hederaPrivateKey: clientHederaPrivateKey || '',
       stellarPrivateKey: clientStellarPrivateKey || '',
@@ -1192,6 +1203,8 @@ async function runTest() {
       evmRpcUrl: networks.evm.rpcUrl,
       svmNetwork: networks.svm.caip2,
       svmRpcUrl: networks.svm.rpcUrl,
+      ccdNetwork: networks.ccd.caip2,
+      ccdGrpcUrl: networks.ccd.rpcUrl,
       hederaNetwork: networks.hedera.caip2,
       hederaNodeUrl: networks.hedera.rpcUrl,
       tvmNetwork: networks.tvm.caip2,
@@ -1423,16 +1436,18 @@ async function runTest() {
     const facilitatorConfig = facilitatorName ? uniqueFacilitators.get(facilitatorName)?.config : undefined;
     const facilitatorSupportsAvm = facilitatorConfig?.protocolFamilies?.includes('avm') ?? false;
     const facilitatorSupportsAptos = facilitatorConfig?.protocolFamilies?.includes('aptos') ?? false;
+    const facilitatorSupportsCcd = facilitatorConfig?.protocolFamilies?.includes('ccd') ?? false;
     const facilitatorSupportsHedera = facilitatorConfig?.protocolFamilies?.includes('hedera') ?? false;
     const facilitatorSupportsStellar = facilitatorConfig?.protocolFamilies?.includes('stellar') ?? false;
     const facilitatorSupportsTvm = facilitatorConfig?.protocolFamilies?.includes('tvm') ?? false;
 
     const serverConfig: ServerConfig = {
       port,
-      evmPayTo: serverEvmAddress!,
-      svmPayTo: serverSvmAddress!,
+      evmPayTo: serverEvmAddress || '',
+      svmPayTo: serverSvmAddress || '',
       avmPayTo: facilitatorSupportsAvm ? (serverAvmAddress || '') : '',
       aptosPayTo: facilitatorSupportsAptos ? (serverAptosAddress || '') : '',
+      ccdPayTo: facilitatorSupportsCcd ? (serverCcdAddress || '') : '',
       hederaPayTo:
         facilitatorSupportsHedera &&
           facilitatorHederaAccountId &&

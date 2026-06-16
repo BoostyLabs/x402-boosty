@@ -216,7 +216,7 @@ describe("Concordium Integration Tests", () => {
       const concordiumPayload = paymentPayload.payload as unknown as ExactConcordiumPayloadV2;
       expect(concordiumPayload.signedTransaction).toBeDefined();
       expect(concordiumPayload.signedTransaction.version).toBe(1);
-      expect(concordiumPayload.sender).toBe(clientAddress);
+      expect(concordiumPayload.signedTransaction.header.sender).toBe(clientAddress);
 
       // Server verifies
       const accepted = server.findMatchingRequirements(accepts, paymentPayload);

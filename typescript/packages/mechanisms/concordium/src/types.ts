@@ -114,14 +114,11 @@ export interface SignableV1Transaction {
  * @example
  * ```json
  * {
- *   "signedTransaction": { "version": 1, "header": { ... }, ... },
- *   "sender": "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN"
+ *   "signedTransaction": { "version": 1, "header": { ... }, ... }
  * }
  * ```
  */
 export interface ExactConcordiumPayloadV2 {
   /** Partially-signed V1 sponsored transaction (sponsor slot empty) */
   signedTransaction: SignableV1Transaction;
-  /** Sender's Concordium account address (base58check) */
-  sender: string;
 }

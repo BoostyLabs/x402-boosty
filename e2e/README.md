@@ -52,7 +52,7 @@ Launches an interactive CLI where you can select:
 - **Servers** - Protected endpoints requiring payment (Express, Gin, Hono, Next.js, FastAPI, Flask, etc.)
 - **Clients** - Payment-capable HTTP clients (axios, fetch, httpx, requests, etc.)
 - **Extensions** - Additional features like Bazaar discovery
-- **Protocols** - EVM, SVM, Aptos, Hedera, Stellar, and/or TVM networks
+- **Protocols** - EVM, SVM, AVM, Aptos, Concordium, Hedera, Stellar, and/or TVM networks
 - **Payment schemes** (when multiple apply) - `exact`, `upto`, or `batch-settlement`
 
 Every valid combination of your selections will be tested. For example, selecting 2 facilitators, 3 servers, and 2 clients will generate and run all compatible test scenarios.
@@ -126,6 +126,7 @@ Required environment variables (set in `.env` file):
 CLIENT_EVM_PRIVATE_KEY=0x...        # EVM private key for client payments
 CLIENT_SVM_PRIVATE_KEY=...          # Solana private key for client payments
 CLIENT_APTOS_PRIVATE_KEY=...        # Aptos private key for client payments (hex string)
+CLIENT_CCD_WALLET_PATH=...          # Concordium wallet export path for client payments
 CLIENT_HEDERA_ACCOUNT_ID=0.0....    # Hedera account id for client payments
 CLIENT_HEDERA_PRIVATE_KEY=0x...     # Hedera ECDSA private key for client payments
 CLIENT_STELLAR_PRIVATE_KEY=...      # Stellar private key for client payments
@@ -135,6 +136,7 @@ CLIENT_TVM_PRIVATE_KEY=...          # TVM private key for client payments
 SERVER_EVM_ADDRESS=0x...            # Where servers receive EVM payments
 SERVER_SVM_ADDRESS=...              # Where servers receive Solana payments
 SERVER_APTOS_ADDRESS=0x...          # Where servers receive Aptos payments
+SERVER_CCD_ADDRESS=...              # Where servers receive Concordium payments
 SERVER_HEDERA_ADDRESS=0.0....       # Where servers receive Hedera payments
 SERVER_STELLAR_ADDRESS=...          # Where servers receive Stellar payments
 SERVER_TVM_ADDRESS=...              # Where servers receive TVM payments
@@ -143,16 +145,28 @@ SERVER_TVM_ADDRESS=...              # Where servers receive TVM payments
 FACILITATOR_EVM_PRIVATE_KEY=0x...   # EVM private key for facilitator
 FACILITATOR_SVM_PRIVATE_KEY=...     # Solana private key for facilitator
 FACILITATOR_APTOS_PRIVATE_KEY=...   # Aptos private key for facilitator (hex string)
+FACILITATOR_CCD_WALLET_PATH=...     # Concordium sponsor wallet export path for facilitator
 FACILITATOR_HEDERA_ACCOUNT_ID=0.0... # Hedera fee payer account id for facilitator
 FACILITATOR_HEDERA_PRIVATE_KEY=0x... # Hedera ECDSA private key for facilitator
 FACILITATOR_STELLAR_PRIVATE_KEY=... # Stellar private key for facilitator
 FACILITATOR_TVM_PRIVATE_KEY=...     # TVM private key for facilitator
+
+# Concordium network override
+CCD_NETWORK=ccd:4221332d34e1694168c2a0c0b3fd0f27  # Optional; defaults to testnet
+CCD_GRPC_URL=grpc.testnet.concordium.com:20000    # Optional; defaults by network
 
 # TVM support
 TVM_PROVIDER=tonapi                 # Optional: toncenter (default) or tonapi
 TONAPI_API_KEY=...                  # Required when TVM_PROVIDER=tonapi
 TONAPI_BASE_URL=...                 # Optional custom TonAPI base URL
 TONCENTER_API_KEY=...               # Recommended when TVM_PROVIDER=toncenter
+```
+
+For a focused Concordium shared-harness run after configuring those values:
+
+```bash
+cd e2e
+pnpm test --testnet --families=ccd --facilitators=typescript --clients=axios,fetch --servers=express,fastify,hono,next --min -v
 ```
 
 To run Python SDK TVM e2e scenarios through TonAPI instead of Toncenter:

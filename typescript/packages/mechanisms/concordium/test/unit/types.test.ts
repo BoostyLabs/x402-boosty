@@ -92,10 +92,11 @@ describe("Concordium Types", () => {
             sponsor: {},
           },
         },
-        sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
       };
 
-      expect(payload.sender).toBe(payload.signedTransaction.header.sender);
+      expect(payload.signedTransaction.header.sender).toBe(
+        "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
+      );
       expect(payload.signedTransaction.version).toBe(1);
     });
   });

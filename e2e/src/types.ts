@@ -1,6 +1,6 @@
 import type { NetworkSet } from './networks/networks';
 
-export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'stellar' | 'tvm';
+export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'stellar' | 'ccd' | 'tvm';
 export type Transport = 'http' | 'mcp';
 export type PaymentScheme = 'exact' | 'upto' | 'batch-settlement';
 export type AssetTransferMethod = 'eip3009' | 'permit2';
@@ -78,6 +78,7 @@ export interface ClientConfig {
   svmPrivateKey: string;
   avmPrivateKey: string;
   aptosPrivateKey: string;
+  ccdWalletPath: string;
   hederaAccountId: string;
   hederaPrivateKey: string;
   stellarPrivateKey: string;
@@ -88,6 +89,8 @@ export interface ClientConfig {
   evmRpcUrl: string;
   svmNetwork: string;
   svmRpcUrl: string;
+  ccdNetwork: string;
+  ccdGrpcUrl: string;
   hederaNetwork: string;
   hederaNodeUrl: string;
   tvmNetwork: string;
@@ -101,6 +104,7 @@ export interface ServerConfig {
   svmPayTo: string;
   avmPayTo: string;
   aptosPayTo: string;
+  ccdPayTo: string;
   hederaPayTo: string;
   hederaAsset?: string;
   hederaAmount?: string;

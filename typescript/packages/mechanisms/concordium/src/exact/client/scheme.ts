@@ -112,10 +112,16 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
 
     const sponsorAccountAddress = AccountAddress.fromBase58(feePayer);
 
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const maxTimeoutSeconds = requirements.maxTimeoutSeconds;
+    if (!Number.isInteger(maxTimeoutSeconds) || maxTimeoutSeconds <= 5) {
+      throw new Error("requirements.maxTimeoutSeconds must be an integer greater than 5");
+    }
+
     const metadata = {
       sender: this.signer.accountAddress,
       nonce: nonceResult.nonce,
-      expiry: TransactionExpiry.futureMinutes(5),
+      expiry: TransactionExpiry.fromEpochSeconds(nowSeconds + maxTimeoutSeconds - 5),
     };
 
     const signable = isNativeCcd
@@ -123,12 +129,7 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build()
-      : this.buildPltTransfer(
-          requirements.payTo,
-          requirements.amount,
-          requirements.asset,
-          typeof requirements.extra?.decimals === "number" ? requirements.extra.decimals : 6,
-        )
+      : this.buildPltTransfer(requirements.payTo, requirements.amount, requirements.asset)
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build();
@@ -141,7 +142,6 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
       signedTransaction: toJsonSafe(
         signedJson,
       ) as unknown as ExactConcordiumPayloadV2["signedTransaction"],
-      sender: this.signer.accountAddress.toString(),
     };
 
     return {
@@ -173,14 +173,13 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    * @param payTo   - Recipient address (base58check)
    * @param amount  - Transfer amount in smallest token units (string)
    * @param tokenId - Token identifier (e.g. "EURR")
-   * @param decimals - Token decimal places
    * @returns A transaction builder for a PLT token transfer
    */
-  private buildPltTransfer(payTo: string, amount: string, tokenId: string, decimals = 6) {
+  private buildPltTransfer(payTo: string, amount: string, tokenId: string) {
     const ops = [
       {
         [TokenOperationType.Transfer]: {
-          amount: TokenAmount.fromDecimal(parseFloat(amount), decimals),
+          amount: TokenAmount.create(BigInt(amount), 0),
           recipient: CborAccountAddress.fromAccountAddress(AccountAddress.fromBase58(payTo)),
           memo: undefined,
         },
@@ -200,15 +199,7 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    * @returns A connected ConcordiumGRPCNodeClient instance
    */
   private createGrpcClient(network: Network): ConcordiumGRPCNodeClient {
-    if (this.config?.grpcUrl) {
-      const [host, port] = parseGrpcUrl(this.config.grpcUrl);
-      const creds =
-        this.config.useTls !== false ? credentials.createSsl() : credentials.createInsecure();
-
-      return new ConcordiumGRPCNodeClient(host, port, creds);
-    }
-
-    const grpcUrl = getConcordiumGrpcUrl(network);
+    const grpcUrl = this.config?.grpcUrl ?? getConcordiumGrpcUrl(network);
     const [host, port] = parseGrpcUrl(grpcUrl);
     const creds =
       (this.config?.useTls ?? true) ? credentials.createSsl() : credentials.createInsecure();

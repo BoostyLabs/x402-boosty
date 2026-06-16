@@ -20,8 +20,10 @@ function createMockFacilitatorSigner(
 ): FacilitatorConcordiumSigner {
   return {
     getAddress: () => address,
+    getNetwork: () => "ccd:*",
     getAccountInfo: vi.fn(),
     getTokenBalance: vi.fn().mockResolvedValue(1_000_000n),
+    getTokenDecimals: vi.fn().mockResolvedValue(6),
     addSponsorSignature: vi.fn(),
     submitTransaction: vi.fn(),
     waitForFinalization: vi.fn(),
@@ -65,7 +67,7 @@ describe("@x402/concordium", () => {
         network: CONCORDIUM_TESTNET_CAIP2,
         asset: "CCD",
         amount: "1000000",
-        payTo: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
+        payTo: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
         maxTimeoutSeconds: 60,
         extra: {},
       };
@@ -87,7 +89,7 @@ describe("@x402/concordium", () => {
         network: CONCORDIUM_TESTNET_CAIP2,
         asset: "CCD",
         amount: "1000000",
-        payTo: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
+        payTo: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
         maxTimeoutSeconds: 60,
         extra: {},
       };
@@ -146,7 +148,7 @@ describe("@x402/concordium", () => {
         CONCORDIUM_TESTNET_CAIP2,
       );
 
-      expect(result.amount).toBe("5");
+      expect(result.amount).toBe("5000000");
       expect(result.asset).toBe("EURR");
     });
 
@@ -275,7 +277,7 @@ describe("@x402/concordium", () => {
             signedTransaction: {
               version: 1,
               header: {
-                sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
                 expiry: Math.floor(Date.now() / 1000) + 300,
                 sponsor: {
                   account: "WRONG_SPONSOR_ADDRESS_HERE_12345678901234567890",
@@ -287,7 +289,6 @@ describe("@x402/concordium", () => {
               payload: { transactionType: "transfer", toAddress: "4Fmi", amount: "1000000" },
               signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
             },
-            sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
           } as any,
         },
         {
@@ -317,7 +318,7 @@ describe("@x402/concordium", () => {
             signedTransaction: {
               version: 1,
               header: {
-                sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
                 expiry: 1000000000, // well in the past
                 sponsor: {
                   account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
@@ -329,7 +330,6 @@ describe("@x402/concordium", () => {
               payload: { transactionType: "transfer", toAddress: "4Fmi", amount: "1000000" },
               signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
             },
-            sender: "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN",
           } as any,
         },
         {

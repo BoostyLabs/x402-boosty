@@ -1,4 +1,11 @@
-import { Cbor, CborAccountAddress, CcdAmount, TokenAmount, Transaction } from "@concordium/web-sdk";
+import {
+  AccountAddress,
+  Cbor,
+  CborAccountAddress,
+  CcdAmount,
+  TokenAmount,
+  Transaction,
+} from "@concordium/web-sdk";
 import {
   Network,
   PaymentPayload,
@@ -79,7 +86,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * @returns Randomly selected fee payer metadata
    */
   getExtra(_: Network): Record<string, unknown> | undefined {
-    const feePayer = this.selectFeePayer();
+    const feePayer = this.selectFeePayer(_);
     if (!feePayer) {
       return undefined;
     }
@@ -96,7 +103,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * @returns Array of sponsor account addresses
    */
   getSigners(_: string): string[] {
-    return [...getSignerAddresses(this.signers)];
+    return [...getSignerAddresses(this.signersFor(_ as Network))];
   }
 
   /**
@@ -156,7 +163,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     if (typeof feePayer !== "string" || !feePayer) {
       return this.invalid("missing_fee_payer", resolvedPayer);
     }
-    const sponsorSigner = this.resolveSigner(feePayer);
+    const sponsorSigner = this.resolveSigner(feePayer, requirements.network);
     if (!sponsorSigner) {
       return this.invalid("fee_payer_not_managed_by_facilitator", resolvedPayer);
     }
@@ -193,11 +200,16 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
       );
     }
 
-    const decodedPayload = this.decodePayload(tx.payload);
-    if (typeof decodedPayload === "string") {
-      return this.invalid(decodedPayload, resolvedPayer);
+    let decodedPayload: DecodedPayload;
+    try {
+      const decoded = this.decodePayload(tx.payload);
+      if (typeof decoded === "string") {
+        return this.invalid(decoded, resolvedPayer);
+      }
+      decodedPayload = decoded;
+    } catch (err) {
+      return this.invalid(err instanceof Error ? err.message : String(err), resolvedPayer);
     }
-
     const safetyError = this.checkPayloadSafety(tx, decodedPayload);
     if (safetyError !== null) return this.invalid(safetyError, resolvedPayer);
 
@@ -213,7 +225,13 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     );
     if (recipientError !== null) return this.invalid(recipientError, resolvedPayer);
 
-    const amountError = this.checkAmount(tx.payload, requirements, expectedAsset, decodedPayload);
+    const amountError = await this.checkAmount(
+      tx.payload,
+      requirements,
+      expectedAsset,
+      decodedPayload,
+      sponsorSigner,
+    );
     if (amountError !== null) return this.invalid(amountError, resolvedPayer);
 
     if (!hasSenderSignature(tx)) {
@@ -303,7 +321,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
     if (typeof feePayer !== "string" || !feePayer) {
       return this.failure(network, "", verifiedPayer, "missing_fee_payer");
     }
-    const sponsorSigner = this.resolveSigner(feePayer);
+    const sponsorSigner = this.resolveSigner(feePayer, requirements.network);
     if (!sponsorSigner) {
       return this.failure(network, "", verifiedPayer, "fee_payer_not_managed_by_facilitator");
     }
@@ -494,18 +512,37 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * @param requirements - The payment requirements with the expected amount
    * @param expectedAsset - Expected asset identifier (empty for CCD)
    * @param decodedPayload - Decoded transfer details extracted from the payload
+   * @param signer - Facilitator signer used for token metadata lookups
    * @returns An invalidReason string, or null if valid
    */
-  private checkAmount(
+  private async checkAmount(
     payload: SignableV1TransactionPayload,
     requirements: PaymentRequirements,
     expectedAsset: string,
     decodedPayload: DecodedPayload,
-  ): string | null {
-    const required = BigInt(getRequiredAmount(requirements));
+    signer: FacilitatorConcordiumSigner,
+  ): Promise<string | null> {
+    const requiredAmount = getRequiredAmount(requirements);
+    if (!/^\d+$/.test(requiredAmount)) return "invalid_required_amount";
+    const required = BigInt(requiredAmount);
 
     if (expectedAsset.toUpperCase() !== "CCD") {
       if (decodedPayload.amount === null) return "invalid_amount_format";
+      if (decodedPayload.tokenDecimals === null || decodedPayload.tokenId === null) {
+        return "invalid_token_amount";
+      }
+
+      let expectedDecimals: number;
+      try {
+        expectedDecimals = await signer.getTokenDecimals(decodedPayload.tokenId);
+      } catch {
+        return "token_decimals_lookup_failed";
+      }
+
+      if (decodedPayload.tokenDecimals !== expectedDecimals) {
+        return "invalid_token_amount_decimals";
+      }
+
       return decodedPayload.amount === required
         ? null
         : `amount_mismatch: required ${required}, got ${decodedPayload.amount}`;
@@ -651,10 +688,11 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
   /**
    * Selects a fee payer address from the configured facilitator signers.
    *
+   * @param network - CAIP-2 network identifier
    * @returns Selected fee payer address, or undefined when no signers exist
    */
-  private selectFeePayer(): string | undefined {
-    const addresses = getSignerAddresses(this.signers);
+  private selectFeePayer(network: Network): string | undefined {
+    const addresses = getSignerAddresses(this.signersFor(network));
     if (addresses.length === 0) {
       return undefined;
     }
@@ -667,10 +705,27 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * Resolves the facilitator signer responsible for a fee payer address.
    *
    * @param address - Fee payer address
+   * @param network - CAIP-2 network identifier
    * @returns Matching facilitator signer, or undefined if unmanaged
    */
-  private resolveSigner(address: string): FacilitatorConcordiumSigner | undefined {
-    return this.signers.find(signer => signer.getAddress() === address);
+  private resolveSigner(
+    address: string,
+    network: Network,
+  ): FacilitatorConcordiumSigner | undefined {
+    return this.signersFor(network).find(signer => signer.getAddress() === address);
+  }
+
+  /**
+   * Returns signers connected to the requested network.
+   *
+   * @param network - CAIP-2 network identifier
+   * @returns Signers for that network, or wildcard signers
+   */
+  private signersFor(network: Network): readonly FacilitatorConcordiumSigner[] {
+    return this.signers.filter(signer => {
+      const signerNetwork = signer.getNetwork();
+      return signerNetwork === network || signerNetwork === "ccd:*";
+    });
   }
 
   /**
@@ -688,6 +743,7 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
           recipient: payload.toAddress,
           amount: parseBigIntValue(payload.amount, "invalid_amount_format"),
           tokenId: null,
+          tokenDecimals: null,
         };
       case "tokenUpdate":
         return decodeTokenUpdatePayload(payload);
@@ -766,15 +822,19 @@ function getRequiredAmount(requirements: PaymentRequirements): string {
  * @returns True if the address matches base58check format
  */
 function isValidBase58Address(address: string): boolean {
-  if (!address || typeof address !== "string") return false;
-  if (address.length < 45 || address.length > 55) return false;
-  return /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(address);
+  try {
+    AccountAddress.fromBase58(address);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 type DecodedPayload = {
   recipient: string | null;
   amount: bigint | null;
   tokenId: string | null;
+  tokenDecimals: number | null;
 };
 
 /**
@@ -867,5 +927,6 @@ function decodeTokenUpdatePayload(payload: TokenUpdatePayload): DecodedPayload |
     recipient: recipient.address.toString(),
     amount: amount.value,
     tokenId: payload.tokenId,
+    tokenDecimals: amount.decimals,
   };
 }

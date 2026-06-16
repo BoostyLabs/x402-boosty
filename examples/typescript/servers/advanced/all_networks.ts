@@ -64,8 +64,7 @@ const STELLAR_NETWORK = "stellar:testnet" as const; // Stellar Testnet
 const HEDERA_HBAR_ASSET = "0.0.0" as const; // Native HBAR asset id
 const HEDERA_WEATHER_PRICE_TINYBARS = "100000" as const; // 0.001 HBAR
 const TVM_NETWORK = (process.env.TVM_NETWORK || "tvm:-3") as Network; // TON Testnet
-const CCD_DEFAULT_STABLECOIN_SYMBOL = "EURR" as const;
-const CCD_DEFAULT_STABLECOIN_DECIMALS = 6 as const;
+const CCD_WEATHER_PRICE_MICRO_CCD = "1000" as const; // 0.001 CCD
 
 // Build accepts array dynamically based on configured addresses
 const accepts: Array<{
@@ -85,7 +84,10 @@ if (avmAddress) {
 if (ccdAddress) {
   accepts.push({
     scheme: "exact",
-    price: "$0.001",
+    price: {
+      amount: CCD_WEATHER_PRICE_MICRO_CCD,
+      asset: "CCD",
+    },
     network: CCD_NETWORK,
     payTo: ccdAddress,
   });
@@ -143,19 +145,7 @@ if (avmAddress) {
   server.register(AVM_NETWORK, new ExactAvmScheme());
 }
 if (ccdAddress) {
-  const concordiumServer = new ExactConcordiumScheme()
-    .registerAsset(CCD_NETWORK, CCD_DEFAULT_STABLECOIN_SYMBOL, CCD_DEFAULT_STABLECOIN_DECIMALS)
-    .registerMoneyParser(async amount => ({
-      amount: amount.toString(),
-      asset: CCD_DEFAULT_STABLECOIN_SYMBOL,
-      extra: {
-        type: "plt",
-        symbol: CCD_DEFAULT_STABLECOIN_SYMBOL,
-        decimals: CCD_DEFAULT_STABLECOIN_DECIMALS,
-      },
-    }));
-
-  server.register(CCD_NETWORK, concordiumServer);
+  server.register(CCD_NETWORK, new ExactConcordiumScheme());
 }
 if (evmAddress) {
   server.register(EVM_NETWORK, new ExactEvmScheme());

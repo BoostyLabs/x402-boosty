@@ -9,7 +9,8 @@
     "aptos",
     "hedera",
     "stellar",
-    "tvm"
+    "tvm",
+    "ccd"
   ],
   "x402Versions": [
     1,
@@ -33,21 +34,25 @@
   },
   "environment": {
     "required": [
-      "PORT",
-      "EVM_PRIVATE_KEY",
-      "SVM_PRIVATE_KEY"
+      "PORT"
     ],
     "optional": [
       "AVM_PRIVATE_KEY",
       "APTOS_PRIVATE_KEY",
+      "CCD_FACILITATOR_WALLET_PATH",
+      "CCD_NETWORK",
+      "CCD_GRPC_URL",
+      "EVM_PRIVATE_KEY",
       "HEDERA_ACCOUNT_ID",
       "HEDERA_PRIVATE_KEY",
+      "SVM_PRIVATE_KEY",
       "STELLAR_PRIVATE_KEY",
       "TVM_PRIVATE_KEY",
       "EVM_NETWORK",
       "SVM_NETWORK",
       "AVM_NETWORK",
       "APTOS_NETWORK",
+      "CCD_NETWORK",
       "HEDERA_NETWORK",
       "HEDERA_NODE_URL",
       "STELLAR_NETWORK",
