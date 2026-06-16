@@ -247,12 +247,14 @@ describe("Concordium exact flow (repo e2e offline)", () => {
     };
     const facilitatorSigner: FacilitatorConcordiumSigner = {
       getAddress: () => feePayer,
+      getNetwork: () => "ccd:*",
       getAccountInfo: async () =>
         ({
           accountNonce: payload.signedTransaction.header.nonce,
           accountAmount: { microCcdAmount: 10_000_000n },
         }) as any,
       getTokenBalance: async () => 1_000_000n,
+      getTokenDecimals: async () => 6,
       addSponsorSignature: async (tx: SignableV1Transaction) => tx as any,
       submitTransaction: async () => "deadbeef",
       waitForFinalization: async () => ({
