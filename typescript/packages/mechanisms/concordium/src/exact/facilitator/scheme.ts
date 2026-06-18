@@ -436,9 +436,10 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
       return "sponsor_as_sender";
     }
 
-    if (decodedPayload.recipient !== null && sponsorAddresses.includes(decodedPayload.recipient)) {
-      return "sponsor_as_recipient";
-    }
+    // Note: sponsor_as_recipient is intentionally NOT checked.
+    // In standard x402 deployments the service provider runs both the
+    // facilitator (sponsoring gas) and the server (receiving payment),
+    // so the sponsor being the recipient is a legitimate flow.
 
     return null;
   }
