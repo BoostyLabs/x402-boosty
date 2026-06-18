@@ -16,7 +16,7 @@ import {
   SettleResponse,
   SupportedResponse,
 } from "@x402/core/types";
-import { parseWallet, buildAccountSigner, AccountAddress } from "@concordium/web-sdk";
+import { parseWallet, buildAccountSigner, buildBasicAccountSigner, AccountAddress } from "@concordium/web-sdk";
 import { readFileSync } from "fs";
 import { ExactConcordiumScheme as ExactConcordiumClient } from "../../src/exact/client/scheme";
 import { ExactConcordiumScheme as ExactConcordiumServer } from "../../src/exact/server/scheme";
@@ -32,13 +32,21 @@ import {
 } from "../../src/constants";
 
 const CLIENT_WALLET_PATH = process.env.CONCORDIUM_CLIENT_WALLET_PATH;
+const CLIENT_PRIVATE_KEY = process.env.CONCORDIUM_CLIENT_PRIVATE_KEY;
+const CLIENT_ADDRESS = process.env.CONCORDIUM_CLIENT_ADDRESS;
 const FACILITATOR_WALLET_PATH = process.env.CONCORDIUM_FACILITATOR_WALLET_PATH;
+const FACILITATOR_PRIVATE_KEY = process.env.CONCORDIUM_FACILITATOR_PRIVATE_KEY;
+const FACILITATOR_ADDRESS = process.env.CONCORDIUM_FACILITATOR_ADDRESS;
 const PAY_TO_ADDRESS = process.env.CONCORDIUM_PAY_TO_ADDRESS;
 
-if (!CLIENT_WALLET_PATH || !FACILITATOR_WALLET_PATH || !PAY_TO_ADDRESS) {
+const hasClientWallet = !!(CLIENT_WALLET_PATH || (CLIENT_PRIVATE_KEY && CLIENT_ADDRESS));
+const hasFacilitatorWallet = !!(FACILITATOR_WALLET_PATH || (FACILITATOR_PRIVATE_KEY && FACILITATOR_ADDRESS));
+
+if (!hasClientWallet || !hasFacilitatorWallet || !PAY_TO_ADDRESS) {
   throw new Error(
-    "CONCORDIUM_CLIENT_WALLET_PATH, CONCORDIUM_FACILITATOR_WALLET_PATH, and CONCORDIUM_PAY_TO_ADDRESS " +
-      "environment variables must be set for integration tests",
+    "Either CONCORDIUM_CLIENT_WALLET_PATH or both CONCORDIUM_CLIENT_PRIVATE_KEY + CONCORDIUM_CLIENT_ADDRESS " +
+      "must be set. Either CONCORDIUM_FACILITATOR_WALLET_PATH or both CONCORDIUM_FACILITATOR_PRIVATE_KEY + CONCORDIUM_FACILITATOR_ADDRESS " +
+      "must be set. CONCORDIUM_PAY_TO_ADDRESS must be set.",
   );
 }
 
@@ -141,25 +149,46 @@ let facilitatorSigner: ReturnType<typeof toConcordiumFacilitatorSigner>;
 
 describe("Concordium Integration Tests", () => {
   beforeAll(() => {
-    const clientWallet = parseWallet(readFileSync(CLIENT_WALLET_PATH!, "utf8"));
-    clientAddress = clientWallet.value.address;
-    clientSigner = {
-      accountAddress: AccountAddress.fromBase58(clientAddress),
-      signer: buildAccountSigner(clientWallet),
-    };
-
-    const facilitatorWallet = parseWallet(readFileSync(FACILITATOR_WALLET_PATH!, "utf8"));
-    facilitatorAddress = facilitatorWallet.value.address;
     const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(CONCORDIUM_TESTNET_CAIP2));
 
-    facilitatorSigner = toConcordiumFacilitatorSigner(
-      AccountAddress.fromBase58(facilitatorAddress).toString(),
-      buildAccountSigner(facilitatorWallet),
-      { host, port, useTls: true },
-    );
+    // Client setup: prefer private key, fall back to wallet export
+    if (CLIENT_PRIVATE_KEY && CLIENT_ADDRESS) {
+      clientAddress = CLIENT_ADDRESS;
+      clientSigner = {
+        accountAddress: AccountAddress.fromBase58(clientAddress),
+        signer: buildBasicAccountSigner(CLIENT_PRIVATE_KEY),
+      };
+      console.log(`Client (private key): ${clientAddress}`);
+    } else {
+      const clientWallet = parseWallet(readFileSync(CLIENT_WALLET_PATH!, "utf8"));
+      clientAddress = clientWallet.value.address;
+      clientSigner = {
+        accountAddress: AccountAddress.fromBase58(clientAddress),
+        signer: buildAccountSigner(clientWallet),
+      };
+      console.log(`Client (wallet export): ${clientAddress}`);
+    }
 
-    console.log(`Client:      ${clientAddress}`);
-    console.log(`Facilitator: ${facilitatorAddress}`);
+    // Facilitator setup: prefer private key, fall back to wallet export
+    if (FACILITATOR_PRIVATE_KEY && FACILITATOR_ADDRESS) {
+      facilitatorAddress = FACILITATOR_ADDRESS;
+      facilitatorSigner = toConcordiumFacilitatorSigner(
+        facilitatorAddress,
+        FACILITATOR_PRIVATE_KEY,
+        { host, port, useTls: true },
+      );
+      console.log(`Facilitator (private key): ${facilitatorAddress}`);
+    } else {
+      const facilitatorWallet = parseWallet(readFileSync(FACILITATOR_WALLET_PATH!, "utf8"));
+      facilitatorAddress = facilitatorWallet.value.address;
+      facilitatorSigner = toConcordiumFacilitatorSigner(
+        AccountAddress.fromBase58(facilitatorAddress).toString(),
+        buildAccountSigner(facilitatorWallet),
+        { host, port, useTls: true },
+      );
+      console.log(`Facilitator (wallet export): ${facilitatorAddress}`);
+    }
+
     console.log(`PayTo:       ${PAY_TO_ADDRESS}`);
     console.log(`Network:     ${CONCORDIUM_TESTNET_CAIP2}\n`);
   });
@@ -452,7 +481,7 @@ describe("Concordium Integration Tests", () => {
 
         expect(requirements).toHaveLength(1);
         expect(requirements[0].amount).toBe(testCase.expectedAmount);
-        expect(requirements[0].asset).toBe(""); // native CCD
+        expect(requirements[0].asset).toBe("CCD"); // native CCD
       }
     });
 
@@ -471,7 +500,8 @@ describe("Concordium Integration Tests", () => {
       });
 
       expect(requirements).toHaveLength(1);
-      expect(requirements[0].amount).toBe("5");
+      // parseAssetAmount converts whole units to atomic units: 5 EURR × 10^6 = 5000000
+      expect(requirements[0].amount).toBe("5000000");
       expect(requirements[0].asset).toBe("EURR");
       expect(requirements[0].extra?.foo).toBe("bar");
     });
@@ -520,7 +550,7 @@ describe("Concordium Integration Tests", () => {
       });
 
       expect(smallRequirements[0].amount).toBe("50000000"); // 50 * 1e6 (CCD)
-      expect(smallRequirements[0].asset).toBe("");
+      expect(smallRequirements[0].asset).toBe("CCD");
     });
 
     it("should support multiple MoneyParser in chain", async () => {
@@ -562,7 +592,7 @@ describe("Concordium Integration Tests", () => {
         network: CONCORDIUM_TESTNET_CAIP2 as Network,
       });
       expect(premiumReq[0].extra?.tier).toBe("premium");
-      expect(premiumReq[0].asset).toBe("");
+      expect(premiumReq[0].asset).toBe(""); // custom parser returns empty for native-like CCD
 
       const standardReq = await server.buildPaymentRequirements({
         scheme: "exact",
@@ -570,7 +600,7 @@ describe("Concordium Integration Tests", () => {
         price: 50,
         network: CONCORDIUM_TESTNET_CAIP2 as Network,
       });
-      expect(standardReq[0].asset).toBe("");
+      expect(standardReq[0].asset).toBe("CCD");
       expect(standardReq[0].amount).toBe("50000000");
     });
 
@@ -590,7 +620,7 @@ describe("Concordium Integration Tests", () => {
 
         expect(requirements).toHaveLength(1);
         expect(requirements[0].amount).toBe(testCase.expectedAmount);
-        expect(requirements[0].asset).toBe("");
+        expect(requirements[0].asset).toBe("CCD"); // defaultMoneyConversion returns CCD
       }
     });
   });

@@ -154,6 +154,7 @@ if (
   !process.env.AVM_PRIVATE_KEY &&
   !process.env.APTOS_PRIVATE_KEY &&
   !process.env.CCD_FACILITATOR_WALLET_PATH &&
+  !(process.env.CCD_FACILITATOR_PRIVATE_KEY && process.env.CCD_FACILITATOR_ADDRESS) &&
   !(process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY) &&
   !process.env.STELLAR_PRIVATE_KEY &&
   !process.env.TVM_PRIVATE_KEY
@@ -259,7 +260,18 @@ if (process.env.SVM_PRIVATE_KEY) {
 }
 
 let concordiumSigner: ReturnType<typeof toConcordiumFacilitatorSigner> | undefined;
-if (process.env.CCD_FACILITATOR_WALLET_PATH) {
+if (process.env.CCD_FACILITATOR_PRIVATE_KEY && process.env.CCD_FACILITATOR_ADDRESS) {
+  // New path: hex-encoded Ed25519 private key + address (aligns with all other networks)
+  const [host, port] = parseGrpcUrl(CCD_GRPC_URL);
+
+  concordiumSigner = toConcordiumFacilitatorSigner(
+    process.env.CCD_FACILITATOR_ADDRESS,
+    process.env.CCD_FACILITATOR_PRIVATE_KEY,
+    { host, port, useTls: true },
+  );
+  console.info(`CCD Facilitator account: ${process.env.CCD_FACILITATOR_ADDRESS} on ${CCD_NETWORK} (private key)`);
+} else if (process.env.CCD_FACILITATOR_WALLET_PATH) {
+  // Legacy path: wallet export file
   const sponsorWallet = parseWallet(
     readFileSync(process.env.CCD_FACILITATOR_WALLET_PATH, "utf8"),
   );
@@ -271,7 +283,7 @@ if (process.env.CCD_FACILITATOR_WALLET_PATH) {
     buildAccountSigner(sponsorWallet),
     { host, port, useTls: true },
   );
-  console.info(`CCD Facilitator account: ${sponsorAddress} on ${CCD_NETWORK}`);
+  console.info(`CCD Facilitator account: ${sponsorAddress} on ${CCD_NETWORK} (wallet export)`);
 }
 
 // Initialize the Aptos account from private key (format to AIP-80 compliant format) if provided
