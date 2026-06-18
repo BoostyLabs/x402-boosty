@@ -6,7 +6,6 @@
   "main": "dist/test.js",
   "scripts": {
     "test": "tsx test.ts",
-    "test:concordium-offline": "vitest run concordium/exact-offline.test.ts",
     "test:watch": "tsc --watch",
     "setup": "./setup.sh",
     "setup:legacy": "./setup.sh --legacy",

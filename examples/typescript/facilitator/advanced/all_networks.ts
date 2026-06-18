@@ -66,8 +66,10 @@ const PORT = process.env.PORT || "4022";
 
 // Configuration - optional per network (alphabetic order)
 const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string | undefined;
+const ccdFacilitatorPrivateKey = process.env.CCD_FACILITATOR_PRIVATE_KEY as string | undefined;
+const ccdFacilitatorAddress = process.env.CCD_FACILITATOR_ADDRESS as string | undefined;
 const ccdFacilitatorWalletPath = process.env.CCD_FACILITATOR_WALLET_PATH as string | undefined;
-const ccdNetwork = (process.env.CCD_NETWORK as string | undefined) ?? CONCORDIUM_TESTNET_CAIP2;
+const ccdNetwork: Network = (process.env.CCD_NETWORK as Network | undefined) ?? CONCORDIUM_TESTNET_CAIP2;
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string | undefined;
 const stellarPrivateKey = process.env.STELLAR_PRIVATE_KEY as string | undefined;
@@ -79,6 +81,7 @@ const hederaPrivateKey = process.env.HEDERA_PRIVATE_KEY;
 // Validate at least one private key is provided
 if (
   !avmPrivateKey &&
+  !(ccdFacilitatorPrivateKey && ccdFacilitatorAddress) &&
   !ccdFacilitatorWalletPath &&
   !evmPrivateKey &&
   !svmPrivateKey &&
@@ -87,7 +90,7 @@ if (
   !(hederaAccountId && hederaPrivateKey)
 ) {
   console.error(
-    "❌ At least one of AVM_PRIVATE_KEY, CCD_FACILITATOR_WALLET_PATH, EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
+    "❌ At least one of AVM_PRIVATE_KEY, CCD_FACILITATOR_PRIVATE_KEY + CCD_FACILITATOR_ADDRESS, CCD_FACILITATOR_WALLET_PATH, EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
   );
   process.exit(1);
 }
@@ -129,10 +132,23 @@ if (avmPrivateKey) {
   facilitator.register(AVM_NETWORK, new ExactAvmScheme(avmSigner));
 }
 
-// Register Concordium scheme if wallet export path is provided.
-// Concordium uses the wallet export here because the SDK helper builds the account signer
-// from the exported wallet structure rather than from a raw private key string.
-if (ccdFacilitatorWalletPath) {
+// Register Concordium scheme if private key + address are provided (recommended).
+// This matches how every other mechanism reads a private key from an env var.
+if (ccdFacilitatorPrivateKey && ccdFacilitatorAddress) {
+  const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(CCD_NETWORK));
+
+  const signer = toConcordiumFacilitatorSigner(
+    ccdFacilitatorAddress,
+    ccdFacilitatorPrivateKey,
+    { host, port, useTls: true },
+  );
+
+  facilitator.register(CCD_NETWORK, new ExactConcordiumScheme({ signer }));
+  console.info(`CCD Facilitator account: ${ccdFacilitatorAddress} on ${CCD_NETWORK}`);
+}
+
+// Register Concordium scheme if wallet export path is provided (backward-compatible fallback).
+if (!ccdFacilitatorPrivateKey && ccdFacilitatorWalletPath) {
   const sponsorWallet = parseWallet(readFileSync(ccdFacilitatorWalletPath, "utf8"));
   const sponsorAddress = sponsorWallet.value.address;
   const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(CCD_NETWORK));

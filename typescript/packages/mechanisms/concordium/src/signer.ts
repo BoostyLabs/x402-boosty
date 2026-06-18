@@ -2,6 +2,7 @@ import { ConcordiumGRPCNodeClient, credentials } from "@concordium/web-sdk/nodej
 import {
   AccountAddress,
   AccountSigner,
+  buildBasicAccountSigner,
   TransactionHash,
   CcdAmount,
   AccountInfo,
@@ -66,13 +67,45 @@ export interface FacilitatorConcordiumSigner {
 
 /**
  * Creates a `FacilitatorConcordiumSigner` from a sponsor address,
- * an already-built account signer, and gRPC connection config.
+ * a hex-encoded Ed25519 private key, and gRPC connection config.
  *
- * Only primitives and the `AccountSigner` interface cross the package boundary.
- * The gRPC client and `AccountAddress` are created internally.
+ * This is the recommended path for facilitator deployments — it matches
+ * how every other mechanism (EVM, SVM, AVM, Stellar, Hedera, TVM) reads
+ * a private key from an environment variable.
  *
  * @param sponsorAddress - Sponsor account address (base58check string)
- * @param sponsorSigner  - Built via `buildAccountSigner(parseWallet(walletFile))`
+ * @param privateKey      - Hex-encoded Ed25519 private key (e.g. from CCD_FACILITATOR_PRIVATE_KEY env var)
+ * @param grpcConfig      - gRPC connection parameters, optionally including the CAIP-2 network
+ * @returns A FacilitatorConcordiumSigner instance
+ *
+ * @example
+ * ```typescript
+ * import { getConcordiumGrpcUrl, parseGrpcUrl } from "@x402/concordium";
+ *
+ * const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(network));
+ *
+ * const signer = toConcordiumFacilitatorSigner(
+ *   process.env.CCD_FACILITATOR_ADDRESS,
+ *   process.env.CCD_FACILITATOR_PRIVATE_KEY,
+ *   { host, port, useTls: true },
+ * );
+ * ```
+ */
+export function toConcordiumFacilitatorSigner(
+  sponsorAddress: string,
+  privateKey: string,
+  grpcConfig: GrpcConfig & { network?: Network },
+): FacilitatorConcordiumSigner;
+
+/**
+ * Creates a `FacilitatorConcordiumSigner` from a sponsor address,
+ * an already-built account signer, and gRPC connection config.
+ *
+ * Use this overload when you already have an `AccountSigner` instance,
+ * e.g. from `buildAccountSigner(parseWallet(walletFile))` (wallet export path).
+ *
+ * @param sponsorAddress - Sponsor account address (base58check string)
+ * @param sponsorSigner  - Pre-built AccountSigner instance
  * @param grpcConfig     - gRPC connection parameters, optionally including the CAIP-2 network
  * @returns A FacilitatorConcordiumSigner instance
  *
@@ -92,6 +125,40 @@ export interface FacilitatorConcordiumSigner {
  * ```
  */
 export function toConcordiumFacilitatorSigner(
+  sponsorAddress: string,
+  sponsorSigner: AccountSigner,
+  grpcConfig: GrpcConfig & { network?: Network },
+): FacilitatorConcordiumSigner;
+
+/**
+ * Implementation — dispatches to the shared helper after resolving the signer.
+ *
+ * @param sponsorAddress - Sponsor account address (base58check string)
+ * @param signerOrKey    - Either a pre-built AccountSigner or a hex-encoded Ed25519 private key
+ * @param grpcConfig     - gRPC connection parameters, optionally including the CAIP-2 network
+ * @returns A FacilitatorConcordiumSigner instance
+ */
+export function toConcordiumFacilitatorSigner(
+  sponsorAddress: string,
+  signerOrKey: AccountSigner | string,
+  grpcConfig: GrpcConfig & { network?: Network },
+): FacilitatorConcordiumSigner {
+  const sponsorSigner: AccountSigner =
+    typeof signerOrKey === "string" ? buildBasicAccountSigner(signerOrKey) : signerOrKey;
+
+  return createFacilitatorSigner(sponsorAddress, sponsorSigner, grpcConfig);
+}
+
+/**
+ * Shared internal helper — builds the FacilitatorConcordiumSigner object
+ * from a resolved AccountSigner. Both public overloads delegate here.
+ *
+ * @param sponsorAddress - Sponsor account address (base58check string)
+ * @param sponsorSigner  - Resolved AccountSigner instance
+ * @param grpcConfig     - gRPC connection parameters, optionally including the CAIP-2 network
+ * @returns A FacilitatorConcordiumSigner instance
+ */
+function createFacilitatorSigner(
   sponsorAddress: string,
   sponsorSigner: AccountSigner,
   grpcConfig: GrpcConfig & { network?: Network },

@@ -143,8 +143,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       return this.parseAssetAmount(price, network);
     }
 
-    const isUsdPrice = typeof price === "string" && price.startsWith("$");
-
     const amount = this.parseMoneyToDecimal(price);
 
     for (const parser of this.moneyParsers) {
@@ -152,14 +150,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       if (result !== null) return result;
     }
 
-    if (isUsdPrice) {
-      throw new Error(`USD prices not supported. Got: ${price}`);
-    }
-
-    return {
-      amount: convertToTokenAmount(numberToDecimalString(amount), CCD_NATIVE.decimals),
-      asset: "CCD",
-    };
+    return this.defaultMoneyConversion(amount, network);
   }
 
   /**
@@ -256,7 +247,7 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
 
   /**
    * Parses Money (string | number) to a plain decimal number.
-   * Strips leading `$` if present (though USD prices are rejected upstream).
+   * Strips leading `$` if present.
    *
    * @param money - Raw price to parse
    * @returns formatted decimal number
@@ -264,6 +255,29 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   private parseMoneyToDecimal(money: string | number): number {
     if (typeof money === "number") return money;
     return parseMoneyString(money);
+  }
+
+  /**
+   * Default money conversion for Concordium.
+   * Converts a decimal amount to microCCD (6 decimals).
+   *
+   * This is the final fallback when no custom money parser handles the price.
+   * USD prices (e.g. "$0.10") are accepted and converted to CCD at the
+   * decimal amount — the caller is responsible for exchange-rate conversion
+   * before passing the price to parsePrice.
+   *
+   * @param amount - The decimal amount (e.g., 0.001 for $0.001)
+   * @param _ - The network (unused; CCD is native on all Concordium networks)
+   * @returns The parsed asset amount in microCCD
+   */
+  private defaultMoneyConversion(amount: number, _: Network): AssetAmount {
+    const tokenAmount = convertToTokenAmount(numberToDecimalString(amount), CCD_NATIVE.decimals);
+
+    return {
+      amount: tokenAmount,
+      asset: "CCD",
+      extra: {},
+    };
   }
 
   /**

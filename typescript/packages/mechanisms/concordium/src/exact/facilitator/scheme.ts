@@ -807,11 +807,7 @@ function hasSenderSignature(tx: SignableV1Transaction): boolean {
  * @returns The required amount as a string
  */
 function getRequiredAmount(requirements: PaymentRequirements): string {
-  return (
-    (requirements as unknown as Record<string, string>).maxAmountRequired ??
-    (requirements as unknown as Record<string, string>).amount ??
-    "0"
-  );
+  return requirements.amount;
 }
 
 /**
