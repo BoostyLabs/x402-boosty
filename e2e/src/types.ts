@@ -79,6 +79,8 @@ export interface ClientConfig {
   avmPrivateKey: string;
   aptosPrivateKey: string;
   ccdWalletPath: string;
+  ccdPrivateKey?: string;
+  ccdAddress?: string;
   hederaAccountId: string;
   hederaPrivateKey: string;
   stellarPrivateKey: string;

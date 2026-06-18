@@ -56,6 +56,8 @@ export interface FacilitatorConfig {
   avmPrivateKey?: string;
   aptosPrivateKey?: string;
   ccdWalletPath?: string;
+  ccdPrivateKey?: string;
+  ccdAddress?: string;
   hederaAccountId?: string;
   hederaPrivateKey?: string;
   stellarPrivateKey?: string;
@@ -122,6 +124,8 @@ export class GenericFacilitatorProxy extends BaseProxy implements FacilitatorPro
       AVM_PRIVATE_KEY: config.avmPrivateKey || '',
       APTOS_PRIVATE_KEY: config.aptosPrivateKey || '',
       CCD_FACILITATOR_WALLET_PATH: config.ccdWalletPath || '',
+      CCD_FACILITATOR_PRIVATE_KEY: config.ccdPrivateKey || '',
+      CCD_FACILITATOR_ADDRESS: config.ccdAddress || '',
       HEDERA_ACCOUNT_ID: config.hederaAccountId || '',
       HEDERA_PRIVATE_KEY: config.hederaPrivateKey || '',
       STELLAR_PRIVATE_KEY: config.stellarPrivateKey || '',

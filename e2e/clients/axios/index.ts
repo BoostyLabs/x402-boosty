@@ -25,7 +25,7 @@ import { ExactTvmScheme } from "@x402/tvm/exact/client";
 import { toClientTvmSigner, TVM_PROVIDER_TONAPI, TVM_PROVIDER_TONCENTER } from "@x402/tvm";
 import { ExactAvmScheme as ExactAvmClientScheme } from "@x402/avm/exact/client";
 import { toClientAvmSigner } from "@x402/avm";
-import { AccountAddress, buildAccountSigner, parseWallet } from "@concordium/web-sdk";
+import { AccountAddress, buildAccountSigner, buildBasicAccountSigner, parseWallet } from "@concordium/web-sdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { keyPairFromSeed, type KeyPair } from "@ton/crypto";
@@ -38,6 +38,8 @@ const baseURL = process.env.RESOURCE_SERVER_URL as string;
 const endpointPath = process.env.ENDPOINT_PATH as string;
 const url = `${baseURL}${endpointPath}`;
 const ccdWalletPath = process.env.CCD_WALLET_PATH;
+const ccdPrivateKey = process.env.CCD_PRIVATE_KEY;
+const ccdAddress = process.env.CCD_ADDRESS;
 const evmNetwork = process.env.EVM_NETWORK || "eip155:84532";
 const evmRpcUrl = process.env.EVM_RPC_URL;
 const evmChain = evmNetwork === "eip155:8453" ? base : baseSepolia;
@@ -119,7 +121,18 @@ const tvmScheme = tvmPrivateKey
 const client = new x402Client();
 let batchSettlementScheme: BatchSettlementEvmScheme | undefined;
 
-if (ccdWalletPath) {
+if (ccdPrivateKey && ccdAddress) {
+  client.register(
+    "ccd:*",
+    new ExactConcordiumScheme(
+      {
+        accountAddress: AccountAddress.fromBase58(ccdAddress),
+        signer: buildBasicAccountSigner(ccdPrivateKey),
+      },
+      process.env.CCD_GRPC_URL ? { grpcUrl: process.env.CCD_GRPC_URL } : undefined,
+    ),
+  );
+} else if (ccdWalletPath) {
   const walletExport = parseWallet(readFileSync(ccdWalletPath, "utf8"));
   client.register(
     "ccd:*",
