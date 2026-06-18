@@ -316,6 +316,45 @@ describe("Concordium Integration Tests", () => {
       logExplorerUrl(settleResponse.transaction);
     });
 
+    it("should successfully verify and settle a PLT token payment (USDR)", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(
+          PAY_TO_ADDRESS!,
+          "1000000", // 1 USDR in atomic units (6 decimals)
+          facilitatorAddress,
+          "USDR",
+          CONCORDIUM_TESTNET_CAIP2,
+          { decimals: 6 },
+        ),
+      ];
+      const resource = {
+        url: "https://example.com/premium-usdr",
+        description: "Premium content - USDR",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+
+      expect(paymentPayload).toBeDefined();
+      expect(paymentPayload.accepted.asset).toBe("USDR");
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      if (!verifyResponse.isValid) {
+        console.log("USDR verification failed:", verifyResponse.invalidReason);
+      }
+      expect(verifyResponse.isValid).toBe(true);
+
+      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse.success).toBe(true);
+      expect(settleResponse.transaction).toBeDefined();
+
+      logExplorerUrl(settleResponse.transaction);
+    });
+
     it("should reject payment with wrong sponsor address", async () => {
       const wrongSponsor = "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN";
       const accepts = [
@@ -470,6 +509,7 @@ describe("Concordium Integration Tests", () => {
 
       concordiumServer = new ExactConcordiumServer();
       concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
+      concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "USDR", 6);
       server.register(CONCORDIUM_TESTNET_CAIP2, concordiumServer);
       await server.initialize();
     });
