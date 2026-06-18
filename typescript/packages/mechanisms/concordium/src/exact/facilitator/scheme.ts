@@ -423,13 +423,10 @@ export class ExactConcordiumScheme implements SchemeNetworkFacilitator {
    * Rule 9 — checks transaction payload safety constraints.
    *
    * @param tx - The V1 sponsored transaction to check
-   * @param decodedPayload - Decoded transfer details extracted from the payload
+   * @param _ - Decoded payload (reserved, currently unused in safety checks)
    * @returns An invalidReason string, or null if safe
    */
-  private checkPayloadSafety(
-    tx: SignableV1Transaction,
-    decodedPayload: DecodedPayload,
-  ): string | null {
+  private checkPayloadSafety(tx: SignableV1Transaction, _: DecodedPayload): string | null {
     const sponsorAddresses = getSignerAddresses(this.signers);
 
     if (sponsorAddresses.includes(tx.header.sender)) {

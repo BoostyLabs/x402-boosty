@@ -16,7 +16,12 @@ import {
   SettleResponse,
   SupportedResponse,
 } from "@x402/core/types";
-import { parseWallet, buildAccountSigner, buildBasicAccountSigner, AccountAddress } from "@concordium/web-sdk";
+import {
+  parseWallet,
+  buildAccountSigner,
+  buildBasicAccountSigner,
+  AccountAddress,
+} from "@concordium/web-sdk";
 import { readFileSync } from "fs";
 import { ExactConcordiumScheme as ExactConcordiumClient } from "../../src/exact/client/scheme";
 import { ExactConcordiumScheme as ExactConcordiumServer } from "../../src/exact/server/scheme";
@@ -40,7 +45,10 @@ const FACILITATOR_ADDRESS = process.env.CONCORDIUM_FACILITATOR_ADDRESS;
 const PAY_TO_ADDRESS = process.env.CONCORDIUM_PAY_TO_ADDRESS;
 
 const hasClientWallet = !!(CLIENT_WALLET_PATH || (CLIENT_PRIVATE_KEY && CLIENT_ADDRESS));
-const hasFacilitatorWallet = !!(FACILITATOR_WALLET_PATH || (FACILITATOR_PRIVATE_KEY && FACILITATOR_ADDRESS));
+const hasFacilitatorWallet = !!(
+  FACILITATOR_WALLET_PATH ||
+  (FACILITATOR_PRIVATE_KEY && FACILITATOR_ADDRESS)
+);
 
 if (!hasClientWallet || !hasFacilitatorWallet || !PAY_TO_ADDRESS) {
   throw new Error(

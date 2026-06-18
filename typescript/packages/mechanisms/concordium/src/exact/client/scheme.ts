@@ -130,11 +130,13 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
           .addSponsor(sponsorAccountAddress)
           .build()
       : this.buildPltTransfer(
-            requirements.payTo,
-            requirements.amount,
-            requirements.asset,
-            (requirements.extra as Record<string, unknown> | undefined)?.decimals as number | undefined,
-          )
+          requirements.payTo,
+          requirements.amount,
+          requirements.asset,
+          (requirements.extra as Record<string, unknown> | undefined)?.decimals as
+            | number
+            | undefined,
+        )
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build();
@@ -178,6 +180,7 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    * @param payTo   - Recipient address (base58check)
    * @param amount  - Transfer amount in smallest token units (string)
    * @param tokenId - Token identifier (e.g. "EURR")
+   * @param decimals - Number of decimal places for the token (e.g. 6 for EURR)
    * @returns A transaction builder for a PLT token transfer
    */
   private buildPltTransfer(payTo: string, amount: string, tokenId: string, decimals?: number) {
