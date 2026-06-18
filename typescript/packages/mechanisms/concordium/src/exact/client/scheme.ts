@@ -129,7 +129,12 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build()
-      : this.buildPltTransfer(requirements.payTo, requirements.amount, requirements.asset)
+      : this.buildPltTransfer(
+            requirements.payTo,
+            requirements.amount,
+            requirements.asset,
+            (requirements.extra as Record<string, unknown> | undefined)?.decimals as number | undefined,
+          )
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build();
@@ -175,11 +180,12 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    * @param tokenId - Token identifier (e.g. "EURR")
    * @returns A transaction builder for a PLT token transfer
    */
-  private buildPltTransfer(payTo: string, amount: string, tokenId: string) {
+  private buildPltTransfer(payTo: string, amount: string, tokenId: string, decimals?: number) {
+    const tokenDecimals = decimals ?? 0;
     const ops = [
       {
         [TokenOperationType.Transfer]: {
-          amount: TokenAmount.create(BigInt(amount), 0),
+          amount: TokenAmount.create(BigInt(amount), tokenDecimals),
           recipient: CborAccountAddress.fromAccountAddress(AccountAddress.fromBase58(payTo)),
           memo: undefined,
         },

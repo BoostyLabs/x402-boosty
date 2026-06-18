@@ -120,6 +120,7 @@ function buildConcordiumPaymentRequirements(
   feePayer: string,
   asset = "CCD",
   network: Network = CONCORDIUM_TESTNET_CAIP2,
+  extraFields?: Record<string, unknown>,
 ): PaymentRequirements {
   return {
     scheme: "exact",
@@ -128,7 +129,7 @@ function buildConcordiumPaymentRequirements(
     amount,
     payTo,
     maxTimeoutSeconds: 60,
-    extra: { feePayer },
+    extra: { feePayer, ...(extraFields ?? {}) },
   };
 }
 
@@ -272,9 +273,11 @@ describe("Concordium Integration Tests", () => {
       const accepts = [
         buildConcordiumPaymentRequirements(
           PAY_TO_ADDRESS!,
-          "1", // 1 EURR (whole units)
+          "1000000", // 1 EURR in atomic units (6 decimals)
           facilitatorAddress,
           "EURR",
+          CONCORDIUM_TESTNET_CAIP2,
+          { decimals: 6 },
         ),
       ];
       const resource = {

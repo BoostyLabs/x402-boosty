@@ -211,7 +211,10 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
     return {
       amount: convertToTokenAmount(String(price.amount), asset.decimals),
       asset: asset.symbol,
-      extra: price.extra,
+      extra: {
+        ...(price.extra as Record<string, unknown> ?? {}),
+        decimals: asset.decimals,
+      },
     };
   }
 
