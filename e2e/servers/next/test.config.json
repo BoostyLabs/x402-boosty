@@ -124,6 +124,13 @@
       "protocolFamily": "hedera"
     },
     {
+      "path": "/api/exact/keeta",
+      "method": "GET",
+      "description": "Keeta endpoint using proxy middleware",
+      "requiresPayment": true,
+      "protocolFamily": "keeta"
+    },
+    {
       "path": "/api/exact/stellar",
       "method": "GET",
       "description": "Stellar endpoint using proxy middleware",
@@ -216,6 +223,13 @@
       "protocolFamily": "hedera"
     },
     {
+      "path": "/api/exact/keeta/withx402",
+      "method": "GET",
+      "description": "Keeta endpoint using withX402 wrapper",
+      "requiresPayment": true,
+      "protocolFamily": "keeta"
+    },
+    {
       "path": "/api/exact/stellar/withx402",
       "method": "GET",
       "description": "Stellar endpoint using withX402 wrapper",
@@ -244,6 +258,7 @@
       "EVM_PAYEE_ADDRESS",
       "HEDERA_PAYEE_ADDRESS",
       "SVM_PAYEE_ADDRESS",
+      "KEETA_PAYEE_ADDRESS",
       "STELLAR_PAYEE_ADDRESS",
       "TVM_PAYEE_ADDRESS",
       "TVM_NETWORK",

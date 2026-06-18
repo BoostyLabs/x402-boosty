@@ -42,6 +42,7 @@ export class FacilitatorManager {
       ccdAddress: process.env.FACILITATOR_CCD_ADDRESS,
       hederaAccountId: process.env.FACILITATOR_HEDERA_ACCOUNT_ID,
       hederaPrivateKey: process.env.FACILITATOR_HEDERA_PRIVATE_KEY,
+      keetaFacilitatorMnemonic: process.env.FACILITATOR_KEETA_MNEMONIC,
       stellarPrivateKey: process.env.FACILITATOR_STELLAR_PRIVATE_KEY,
       tvmPrivateKey: process.env.FACILITATOR_TVM_PRIVATE_KEY,
       networks,

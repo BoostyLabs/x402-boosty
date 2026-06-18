@@ -8,6 +8,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { ExactAptosScheme } from "@x402/aptos/exact/server";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
+import { KEETA_TESTNET_CAIP2 } from "@x402/keeta";
+import { ExactKeetaScheme } from "@x402/keeta/exact/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import { ExactTvmScheme } from "@x402/tvm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
@@ -23,6 +25,7 @@ export const AVM_PAYEE_ADDRESS = process.env.AVM_PAYEE_ADDRESS as string;
 export const APTOS_PAYEE_ADDRESS = process.env.APTOS_PAYEE_ADDRESS as string;
 export const CCD_PAYEE_ADDRESS = process.env.CCD_PAYEE_ADDRESS as string | undefined;
 export const HEDERA_PAYEE_ADDRESS = process.env.HEDERA_PAYEE_ADDRESS as string | undefined;
+export const KEETA_PAYEE_ADDRESS = process.env.KEETA_PAYEE_ADDRESS as string | undefined;
 export const STELLAR_PAYEE_ADDRESS = process.env.STELLAR_PAYEE_ADDRESS as string | undefined;
 export const TVM_PAYEE_ADDRESS = process.env.TVM_PAYEE_ADDRESS as string | undefined;
 export const EVM_NETWORK = (process.env.EVM_NETWORK || "eip155:84532") as `${string}:${string}`;
@@ -37,6 +40,7 @@ export const HEDERA_NETWORK = (process.env.HEDERA_NETWORK ||
   "hedera:testnet") as `${string}:${string}`;
 export const HEDERA_ASSET = process.env.HEDERA_ASSET ?? "0.0.0"; // 0.0.0 = HBAR or 0.0.429274 for USDC testnet
 export const HEDERA_AMOUNT = process.env.HEDERA_AMOUNT ?? "100000"; // price in smallest units (tinybars or token decimals), defaults to 0.001 HBAR or 0.1 USDC
+export const KEETA_NETWORK = (process.env.KEETA_NETWORK || KEETA_TESTNET_CAIP2) as `${string}:${string}`;
 export const STELLAR_NETWORK = (process.env.STELLAR_NETWORK ||
   "stellar:testnet") as `${string}:${string}`;
 export const TVM_NETWORK = (process.env.TVM_NETWORK || "tvm:-3") as `${string}:${string}`;
@@ -98,6 +102,9 @@ if (APTOS_PAYEE_ADDRESS) {
 }
 if (HEDERA_PAYEE_ADDRESS) {
   server.register("hedera:*", new ExactHederaScheme());
+}
+if (KEETA_PAYEE_ADDRESS) {
+  server.register("keeta:*", new ExactKeetaScheme());
 }
 if (STELLAR_PAYEE_ADDRESS) {
   server.register("stellar:*", new ExactStellarScheme());
@@ -481,6 +488,35 @@ export const proxy = paymentProxy(
           },
         }
       : {}),
+    ...(KEETA_PAYEE_ADDRESS
+      ? {
+        "/api/exact/keeta": {
+          accepts: {
+            payTo: KEETA_PAYEE_ADDRESS,
+            scheme: "exact",
+            price: "$0.001",
+            network: KEETA_NETWORK,
+          },
+          extensions: {
+            ...declareDiscoveryExtension({
+              output: {
+                example: {
+                  message: "Protected Keeta endpoint accessed successfully",
+                  timestamp: "2024-01-01T00:00:00Z",
+                },
+                schema: {
+                  properties: {
+                    message: { type: "string" },
+                    timestamp: { type: "string" },
+                  },
+                  required: ["message", "timestamp"],
+                },
+              },
+            }),
+          },
+        },
+      }
+      : {}),
     ...(STELLAR_PAYEE_ADDRESS
       ? {
           "/api/exact/stellar": {
@@ -551,6 +587,7 @@ export const config = {
     "/api/exact/avm",
     "/api/exact/aptos",
     "/api/exact/hedera",
+    "/api/exact/keeta",
     "/api/exact/stellar",
     "/api/exact/tvm",
     "/api/exact/evm/permit2/proxy",

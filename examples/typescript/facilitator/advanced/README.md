@@ -10,6 +10,7 @@ Express.js facilitator service demonstrating advanced x402 patterns including al
 - SVM private key with Solana Devnet SOL for transaction fees
 - Stellar private key with testnet XLM for transaction fees (fund via [Stellar Laboratory](https://lab.stellar.org/account/create) ➡️ Generate keypair ➡️ Fund account with Friendbot)
 - Hedera account id + private key for Hedera testnet fees (optional)
+- Keeta mnemonic (seed phrase) and wallet with Testnet KTA for transaction fees (create wallet on [Keeta Testnet Wallet](https://wallet.test.keeta.com/) and fund via [Keeta Testnet Faucet](https://faucet.test.keeta.com/))
 
 ## Setup
 
@@ -28,6 +29,7 @@ and fill required environment variables:
 - `STELLAR_PRIVATE_KEY` - Stellar secret key (starts with `S`)
 - `HEDERA_ACCOUNT_ID` - Hedera account id for fee payer (optional)
 - `HEDERA_PRIVATE_KEY` - Hedera **ECDSA** private key (0x-prefixed or DER-encoded) for fee payer (optional)
+- `KEETA_MNEMONIC` - Keeta mnemonic
 - `PORT` - Server port (optional, defaults to 4022)
 
 > **Concordium Testnet (CCD):**
@@ -86,6 +88,11 @@ Returns payment schemes and networks this facilitator supports.
     {
       "x402Version": 2,
       "scheme": "exact",
+      "network": "keeta:1413829460"
+    },
+    {
+      "x402Version": 2,
+      "scheme": "exact",
       "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
       "extra": {
         "feePayer": "..."
@@ -103,6 +110,7 @@ Returns payment schemes and networks this facilitator supports.
   "extensions": [],
   "signers": {
     "eip155": ["0x..."],
+    "keeta": ["keeta_..."],
     "solana": ["..."],
     "stellar": ["G..."]
   }
@@ -264,3 +272,5 @@ Networks use [CAIP-2](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/cai
 - `stellar:pubnet` — Stellar Mainnet
 - `hedera:testnet` — Hedera Testnet
 - `hedera:mainnet` — Hedera Mainnet
+- `keeta:1413829460` — Keeta Testnet
+- `keeta:21378` — Keeta Mainnet

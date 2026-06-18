@@ -24,7 +24,7 @@ const response = await fetchWithPayment("http://localhost:4021/weather");
 
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
-- Valid EVM, SVM, and/or Stellar private keys for making payments
+- Valid EVM, SVM, Stellar and/or Keeta private keys for making payments
 - A running x402 server (see [server examples](../../servers/))
 - Familiarity with the [basic fetch client](../fetch/)
 
@@ -45,6 +45,7 @@ and fill required environment variables:
 - `HEDERA_ACCOUNT_ID` - Hedera account id for Hedera payments (optional)
 - `HEDERA_PRIVATE_KEY` - Hedera **ECDSA** private key (0x-prefixed or DER-encoded) for Hedera payments (optional)
 - `HEDERA_NETWORK` - Hedera network (optional, defaults to `hedera:testnet`)
+- `KEETA_MNEMONIC` - Keeta mnemonic for Keeta payments
 
 > **Concordium Testnet (CCD):**
 >
@@ -83,6 +84,14 @@ Stellar accounts need to be created and funded with both XLM and USDC. Instructi
 2. Add USDC trustline (required to transact USDC): go to [Fund Account](https://lab.stellar.org/account/fund) ➡️ Paste your `Public Key` ➡️ Add USDC Trustline ➡️ paste your `Secret key` ➡️ Sign transaction ➡️ Add Trustline.
 3. Get testnet USDC from [Circle Faucet](https://faucet.circle.com/) (select Stellar network).
 
+#### Keeta Testnet
+
+To create a Keeta Testnet wallet:
+
+1. Go to [Keeta Testnet Wallet](https://wallet.test.keeta.com/) and follow the steps to create your wallet. Make sure to save your mnemonic (seed phrase) to keep access to your wallet. To get your Keeta address, click on "Receive" and copy the deposit address (starting with `keeta_`).
+2. Use the [Keeta Testnet Faucet](https://faucet.test.keeta.com/) to send Testnet KTA to your wallet.
+3. To get Testnet USDC on Keeta, go to the "Receive" page in the wallet, click on "Any token from Keeta Testnet", select "USDC from Base (Sepolia) Testnet" and copy the deposit address (starting with `0x`). Then go the [Circle Faucet](https://faucet.circle.com/), select Base network and enter your Base deposit address.
+
 ## Available Examples
 
 Each example demonstrates a specific advanced pattern:
@@ -117,6 +126,7 @@ Use the builder pattern for fine-grained control over which networks are support
 ```typescript
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactKeetaScheme } from "@x402/keeta/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactStellarScheme } from "@x402/stellar/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
@@ -128,7 +138,8 @@ const mainnetSigner = privateKeyToAccount(mainnetPrivateKey);
 const client = new x402Client()
   .register("eip155:*", new ExactEvmScheme(evmSigner)) // All EVM networks
   .register("eip155:1", new ExactEvmScheme(mainnetSigner)) // Ethereum mainnet override
-  .register("solana:*", new ExactSvmScheme(svmSigner)); // All Solana networks
+  .register("keeta:*", new ExactKeetaScheme(keetaSigner)) // All Keeta networks
+  .register("solana:*", new ExactSvmScheme(svmSigner)) // All Solana networks
   .register("stellar:*", new ExactStellarScheme(stellarSigner)); // All Stellar networks
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
@@ -191,11 +202,12 @@ Configure client-side network preferences with automatic fallback:
 ```typescript
 import { x402Client, wrapFetchWithPayment, type PaymentRequirements } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactKeetaScheme } from "@x402/keeta/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactStellarScheme } from "@x402/stellar/exact/client";
 
 // Define network preference order (most preferred first)
-const networkPreferences = ["eip155:", "solana:", "stellar:"];
+const networkPreferences = ["eip155:", "keeta:", "solana:", "stellar:"];
 
 const preferredNetworkSelector = (
   _x402Version: number,
@@ -212,6 +224,7 @@ const preferredNetworkSelector = (
 
 const client = new x402Client(preferredNetworkSelector)
   .register("eip155:*", new ExactEvmScheme(evmSigner))
+  .register("keeta:*", new ExactKeetaScheme(keetaSigner))
   .register("solana:*", new ExactSvmScheme(svmSigner))
   .register("stellar:*", new ExactStellarScheme(stellarSigner));
 

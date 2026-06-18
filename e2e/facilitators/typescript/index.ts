@@ -67,6 +67,8 @@ import {
   createEd25519Signer,
   type FacilitatorStellarSigner,
 } from "@x402/stellar";
+import { toFacilitatorKeetaSigner, KEETA_TESTNET_CAIP2, FacilitatorKeetaSigner } from "@x402/keeta";
+import { ExactKeetaScheme } from "@x402/keeta/exact/facilitator";
 import { ExactStellarScheme } from "@x402/stellar/exact/facilitator";
 import {
   HighloadV3Config,
@@ -77,6 +79,7 @@ import {
 } from "@x402/tvm";
 import { ExactTvmScheme } from "@x402/tvm/exact/facilitator";
 import { buildAccountSigner, parseWallet } from "@concordium/web-sdk";
+import * as KeetaNet from "@keetanetwork/keetanet-client";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import express from "express";
@@ -108,6 +111,7 @@ const AVM_NETWORK =
   "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
 const CCD_NETWORK = process.env.CCD_NETWORK || CONCORDIUM_TESTNET_CAIP2;
 const HEDERA_NETWORK = process.env.HEDERA_NETWORK || "hedera:testnet";
+const KEETA_NETWORK = process.env.KEETA_NETWORK || KEETA_TESTNET_CAIP2;
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "stellar:testnet";
 const TVM_NETWORK = process.env.TVM_NETWORK || "tvm:-3";
 const CCD_GRPC_URL =
@@ -137,6 +141,7 @@ console.log(`🌐 Aptos Network: ${APTOS_NETWORK}`);
 console.log(`🌐 AVM Network: ${AVM_NETWORK}`);
 console.log(`🌐 CCD Network: ${CCD_NETWORK}`);
 console.log(`🌐 Hedera Network: ${HEDERA_NETWORK}`);
+console.log(`🌐 Keeta Network: ${KEETA_NETWORK}`);
 console.log(`🌐 Stellar Network: ${STELLAR_NETWORK}`);
 console.log(`🌐 TVM Network: ${TVM_NETWORK}`);
 console.log(`🌐 CCD gRPC URL: ${CCD_GRPC_URL}`);
@@ -330,6 +335,16 @@ if (process.env.HEDERA_ACCOUNT_ID && process.env.HEDERA_PRIVATE_KEY) {
     preflightTransfer: createHederaPreflightTransfer(buildHederaClient),
   });
   console.info(`Hedera Facilitator account: ${hederaAccountId}`);
+}
+
+let keetaSigner: FacilitatorKeetaSigner | undefined;
+if (process.env.KEETA_FACILITATOR_MNEMONIC) {
+  const keetaAccount = KeetaNet.lib.Account.fromSeed(
+    await KeetaNet.lib.Account.seedFromPassphrase(process.env.KEETA_FACILITATOR_MNEMONIC),
+    0,
+  );
+  console.info(`Keeta Facilitator account: ${keetaAccount.publicKeyString.toString()}`);
+  keetaSigner = toFacilitatorKeetaSigner([keetaAccount]);
 }
 
 // Initialize the Stellar signer from private key (optional)
@@ -536,6 +551,9 @@ if (hederaSigner) {
     HEDERA_NETWORK as Network,
     new ExactHederaScheme(hederaSigner),
   );
+}
+if (keetaSigner) {
+  facilitator.register(KEETA_NETWORK as Network, new ExactKeetaScheme(keetaSigner, console));
 }
 if (stellarSigner) {
   facilitator.register(
@@ -872,6 +890,7 @@ app.get("/health", (req, res) => {
     aptosNetwork: aptosAccount ? APTOS_NETWORK : "(not configured)",
     ccdNetwork: concordiumSigner ? CCD_NETWORK : "(not configured)",
     hederaNetwork: hederaSigner ? HEDERA_NETWORK : "(not configured)",
+    keetaNetwork: process.env.KEETA_FACILITATOR_MNEMONIC ? KEETA_NETWORK : "(not configured)",
     stellarNetwork: stellarSigner ? STELLAR_NETWORK : "(not configured)",
     facilitator: "typescript",
     version: "2.0.0",
@@ -892,13 +911,14 @@ app.post("/close", (req, res) => {
   console.log("Received shutdown request");
 
   // Give time for response to be sent
-  setTimeout(() => {
+  setTimeout(async () => {
+    await keetaSigner?.destroy();
     process.exit(0);
   }, 100);
 });
 
 // Start the server
-app.listen(parseInt(PORT), () => {
+let server = app.listen(parseInt(PORT), () => {
   console.log(`
 ╔════════════════════════════════════════════════════════╗
 ║           x402 TypeScript Facilitator                  ║
@@ -910,12 +930,14 @@ app.listen(parseInt(PORT), () => {
 ║  Aptos Network: ${APTOS_NETWORK}                       ║
 ║  CCD Network:  ${concordiumSigner ? CCD_NETWORK : "(not configured)"} ║
 ║  Hedera Network: ${HEDERA_NETWORK}                     ║
+║  Keeta Network: ${KEETA_NETWORK}                       ║
 ║  EVM Address:  ${evmSigner ? evmSigner.getAddresses()[0] : "(not configured)"} ║
 ║  SVM Address:  ${svmSigner ? "configured" : "(not configured)"} ║
 ║  AVM Address:  ${avmSigner ? avmSigner.getAddresses()[0] : "(not configured)"}
 ║  Aptos Address: ${aptosAccount ? aptosAccount.accountAddress.toStringLong().slice(0, 20) + "..." : "(not configured)"}
 ║  CCD Address:  ${concordiumSigner ? concordiumSigner.getAddress() : "(not configured)"} ║
 ║  Hedera Address: ${process.env.HEDERA_ACCOUNT_ID || "(not configured)"} ║
+║  Keeta Address: ${keetaSigner?.getAddresses()[0] || "(not configured)"} ║
 ║  Stellar Address: ${stellarSigner ? stellarSigner.address : "(not configured)"} ║
 ║  Extensions:   ${evmSigner ? "bazaar, eip2612GasSponsoring" : "bazaar"} ║
 ║                                                        ║
@@ -932,3 +954,14 @@ app.listen(parseInt(PORT), () => {
   // Log that facilitator is ready (needed for e2e test discovery)
   console.log("Facilitator listening");
 });
+
+if (keetaSigner) {
+  const shutdown = async () => {
+    server.close(async () => {
+      await keetaSigner.destroy();
+      process.exit(0);
+    });
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}

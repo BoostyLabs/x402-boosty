@@ -60,6 +60,7 @@ export interface FacilitatorConfig {
   ccdAddress?: string;
   hederaAccountId?: string;
   hederaPrivateKey?: string;
+  keetaFacilitatorMnemonic?: string;
   stellarPrivateKey?: string;
   tvmPrivateKey?: string;
   networks: NetworkSet;
@@ -128,6 +129,7 @@ export class GenericFacilitatorProxy extends BaseProxy implements FacilitatorPro
       CCD_FACILITATOR_ADDRESS: config.ccdAddress || '',
       HEDERA_ACCOUNT_ID: config.hederaAccountId || '',
       HEDERA_PRIVATE_KEY: config.hederaPrivateKey || '',
+      KEETA_FACILITATOR_MNEMONIC: config.keetaFacilitatorMnemonic || '',
       STELLAR_PRIVATE_KEY: config.stellarPrivateKey || '',
       TVM_PRIVATE_KEY: config.tvmPrivateKey || '',
 
@@ -144,6 +146,7 @@ export class GenericFacilitatorProxy extends BaseProxy implements FacilitatorPro
       CCD_GRPC_URL: config.networks.ccd.rpcUrl,
       HEDERA_NETWORK: config.networks.hedera.caip2,
       HEDERA_NODE_URL: config.networks.hedera.rpcUrl,
+      KEETA_NETWORK: config.networks.keeta.caip2,
       STELLAR_NETWORK: config.networks.stellar.caip2,
       STELLAR_RPC_URL: config.networks.stellar.rpcUrl,
       TVM_NETWORK: config.networks.tvm.caip2,

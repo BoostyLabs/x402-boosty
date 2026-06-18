@@ -2,7 +2,8 @@
   "name": "fetch",
   "type": "client",
   "language": "typescript",
-  "protocolFamilies": ["evm", "svm", "avm", "aptos", "hedera", "stellar", "tvm", "ccd"],
+  "protocolFamilies": ["evm", "svm", "avm", "aptos", "hedera", "keeta", "stellar", "tvm", "ccd"],
+  "protocolFamilies": ["evm", "svm", "avm", "aptos", "hedera", "keeta", "stellar", "tvm", "ccd"],
   "x402Versions": [1, 2],
   "schemes": ["exact", "upto", "batch-settlement"],
   "evm": {
@@ -23,6 +24,7 @@
       "HEDERA_NETWORK",
       "HEDERA_NODE_URL",
       "SVM_PRIVATE_KEY",
+      "KEETA_CLIENT_MNEMONIC",
       "STELLAR_PRIVATE_KEY",
       "TVM_PRIVATE_KEY",
       "TVM_NETWORK",

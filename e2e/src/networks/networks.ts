@@ -1,12 +1,13 @@
 /**
  * Network configuration for E2E tests
- * 
+ *
  * This is the single source of truth for all network configs.
  * Use getNetworkSet() to get configs for testnet or mainnet mode.
  */
 
 export type NetworkMode = 'testnet' | 'mainnet';
 export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'stellar' | 'ccd' | 'tvm';
+export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'keeta' | 'stellar' | 'tvm';
 
 export type NetworkConfig = {
   name: string;
@@ -21,6 +22,7 @@ export type NetworkSet = {
   avm: NetworkConfig;
   aptos: NetworkConfig;
   hedera: NetworkConfig;
+  keeta: NetworkConfig;
   stellar: NetworkConfig;
   ccd: NetworkConfig;
   tvm: NetworkConfig;
@@ -61,6 +63,12 @@ const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
       name: 'Hedera Testnet',
       caip2: 'hedera:testnet',
       rpcUrl: process.env.HEDERA_TESTNET_NODE_URL || '',
+    },
+    keeta: {
+      name: 'Keeta Testnet',
+      caip2: 'keeta:1413829460',
+      // Unused in Keeta, representative API endpoints are set in the SDK itself
+      rpcUrl: '',
     },
     stellar: {
       name: 'Stellar Testnet',
@@ -105,6 +113,12 @@ const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
       caip2: 'hedera:mainnet',
       rpcUrl: process.env.HEDERA_NODE_URL || '',
     },
+    keeta: {
+      name: 'Keeta',
+      caip2: 'keeta:21378',
+      // Unused in Keeta, representative API endpoints are set in the SDK itself
+      rpcUrl: '',
+    },
     stellar: {
       name: 'Stellar Pubnet',
       caip2: 'stellar:pubnet',
@@ -120,7 +134,7 @@ const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
 
 /**
  * Get the network set for a given mode
- * 
+ *
  * @param mode - 'testnet' or 'mainnet'
  * @returns NetworkSet containing configured protocol network configs
  */
@@ -147,7 +161,7 @@ export function resolveEvmPermit2Asset(networks: NetworkSet): string {
 
 /**
  * Get network config for a protocol family in a given mode
- * 
+ *
  * @param mode - 'testnet' or 'mainnet'
  * @param protocolFamily - 'evm', 'svm', 'avm', 'aptos', 'hedera', 'stellar', 'ccd', or 'tvm'
  * @returns NetworkConfig for the specified protocol
@@ -161,7 +175,7 @@ export function getNetworkForProtocol(
 
 /**
  * Get display string for a network mode
- * 
+ *
  * @param mode - 'testnet' or 'mainnet'
  * @returns Human-readable description of the networks
  */
@@ -173,6 +187,7 @@ export function getNetworkModeDescription(mode: NetworkMode): string {
     set.avm.name,
     set.aptos.name,
     set.hedera.name,
+    set.keeta.name,
     set.stellar.name,
     set.ccd.name,
     set.tvm.name,
