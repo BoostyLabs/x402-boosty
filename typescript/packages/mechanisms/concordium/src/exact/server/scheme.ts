@@ -6,7 +6,7 @@ import {
   SchemeNetworkServer,
   MoneyParser,
 } from "@x402/core/types";
-import { convertToTokenAmount, numberToDecimalString, parseMoneyString } from "@x402/core/utils";
+import { convertToTokenAmount, parseMoneyString } from "@x402/core/utils";
 
 /**
  * Concordium asset information
@@ -150,7 +150,26 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       if (result !== null) return result;
     }
 
-    return this.defaultMoneyConversion(amount, network);
+    // USD-denominated prices ($ prefix) require a registered money parser
+    // because CCD is not a USD stablecoin. Raw numbers are treated as CCD amounts.
+    if (typeof price === "string" && price.startsWith("$")) {
+      throw new Error(
+        `Cannot resolve USD-denominated price to a Concordium asset. ` +
+          `Register a money parser via registerMoneyParser() to map USD prices ` +
+          `to a specific token (e.g., EURR, USDR). Raw amount: ${amount}`,
+      );
+    }
+
+    // Treat raw numbers/non-USD strings as CCD amounts
+    const tokenAmount = convertToTokenAmount(
+      typeof price === "number" ? price.toString() : (price as string),
+      CCD_NATIVE.decimals,
+    );
+    return {
+      amount: tokenAmount,
+      asset: "CCD",
+      extra: {},
+    };
   }
 
   /**
@@ -258,29 +277,6 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   private parseMoneyToDecimal(money: string | number): number {
     if (typeof money === "number") return money;
     return parseMoneyString(money);
-  }
-
-  /**
-   * Default money conversion for Concordium.
-   * Converts a decimal amount to microCCD (6 decimals).
-   *
-   * This is the final fallback when no custom money parser handles the price.
-   * USD prices (e.g. "$0.10") are accepted and converted to CCD at the
-   * decimal amount — the caller is responsible for exchange-rate conversion
-   * before passing the price to parsePrice.
-   *
-   * @param amount - The decimal amount (e.g., 0.001 for $0.001)
-   * @param _ - The network (unused; CCD is native on all Concordium networks)
-   * @returns The parsed asset amount in microCCD
-   */
-  private defaultMoneyConversion(amount: number, _: Network): AssetAmount {
-    const tokenAmount = convertToTokenAmount(numberToDecimalString(amount), CCD_NATIVE.decimals);
-
-    return {
-      amount: tokenAmount,
-      asset: "CCD",
-      extra: {},
-    };
   }
 
   /**

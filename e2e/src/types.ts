@@ -1,7 +1,6 @@
 import type { NetworkSet } from './networks/networks';
 
-export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'stellar' | 'ccd' | 'tvm';
-export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'keeta' | 'stellar' | 'tvm';
+export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'keeta' | 'stellar' | 'ccd' | 'tvm';
 export type Transport = 'http' | 'mcp';
 export type PaymentScheme = 'exact' | 'upto' | 'batch-settlement';
 export type AssetTransferMethod = 'eip3009' | 'permit2';

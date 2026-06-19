@@ -1240,8 +1240,8 @@ async function runTest() {
     const isBatchSettlement = endpointUsesBatchSettlement(scenario.endpoint);
     const voucherSignerPrivateKey = process.env.CLIENT_EVM_VOUCHER_SIGNER_PRIVATE_KEY;
     const baseClientConfig: ClientConfig = {
-      evmPrivateKey: clientEvmPrivateKey || '',
-      svmPrivateKey: clientSvmPrivateKey || '',
+      evmPrivateKey: clientEvmPrivateKey!,
+      svmPrivateKey: clientSvmPrivateKey!,
       avmPrivateKey: clientAvmPrivateKey || '',
       aptosPrivateKey: clientAptosPrivateKey || '',
       ccdWalletPath: clientCcdWalletPath || '',
@@ -1500,8 +1500,8 @@ async function runTest() {
 
     const serverConfig: ServerConfig = {
       port,
-      evmPayTo: serverEvmAddress || '',
-      svmPayTo: serverSvmAddress || '',
+      evmPayTo: serverEvmAddress!,
+      svmPayTo: serverSvmAddress!,
       avmPayTo: facilitatorSupportsAvm ? (serverAvmAddress || '') : '',
       aptosPayTo: facilitatorSupportsAptos ? (serverAptosAddress || '') : '',
       ccdPayTo: facilitatorSupportsCcd ? (serverCcdAddress || '') : '',

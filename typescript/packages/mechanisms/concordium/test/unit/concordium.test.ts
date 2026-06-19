@@ -152,13 +152,11 @@ describe("@x402/concordium", () => {
       expect(result.asset).toBe("EURR");
     });
 
-    it("should convert USD prices to CCD via defaultMoneyConversion", async () => {
+    it("should throw when USD price has no registered money parser", async () => {
       const server = new ExactConcordiumServer();
-      const result = await server.parsePrice("$0.001", CONCORDIUM_TESTNET_CAIP2);
-
-      // $0.001 → 0.001 CCD → 1000 microCCD (6 decimals)
-      expect(result.amount).toBe("1000");
-      expect(result.asset).toBe("CCD");
+      await expect(server.parsePrice("$0.001", CONCORDIUM_TESTNET_CAIP2)).rejects.toThrow(
+        "Cannot resolve USD-denominated price",
+      );
     });
 
     it("should allow USD prices when a money parser is registered", async () => {

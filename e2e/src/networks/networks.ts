@@ -6,8 +6,7 @@
  */
 
 export type NetworkMode = 'testnet' | 'mainnet';
-export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'stellar' | 'ccd' | 'tvm';
-export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'keeta' | 'stellar' | 'tvm';
+export type ProtocolFamily = 'evm' | 'svm' | 'avm' | 'aptos' | 'hedera' | 'keeta' | 'stellar' | 'ccd' | 'tvm';
 
 export type NetworkConfig = {
   name: string;
@@ -181,16 +180,6 @@ export function getNetworkForProtocol(
  */
 export function getNetworkModeDescription(mode: NetworkMode): string {
   const set = NETWORK_SETS[mode];
-  const networks = [
-    set.evm.name,
-    set.svm.name,
-    set.avm.name,
-    set.aptos.name,
-    set.hedera.name,
-    set.keeta.name,
-    set.stellar.name,
-    set.ccd.name,
-    set.tvm.name,
-  ];
+  const networks = [set.evm.name, set.svm.name, set.avm.name, set.aptos.name, set.hedera.name, set.keeta.name, set.stellar.name, set.ccd.name, set.tvm.name];
   return networks.join(' + ');
 }

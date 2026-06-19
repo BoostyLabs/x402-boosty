@@ -557,17 +557,15 @@ describe("Concordium Integration Tests", () => {
       expect(requirements[0].extra?.foo).toBe("bar");
     });
 
-    it("should convert USD prices to CCD via defaultMoneyConversion", async () => {
-      const usdRequirements = await server.buildPaymentRequirements({
-        scheme: "exact",
-        payTo: PAY_TO_ADDRESS!,
-        price: "$0.001",
-        network: CONCORDIUM_TESTNET_CAIP2 as Network,
-      });
-
-      // $0.001 → 0.001 CCD → 1000 microCCD (6 decimals)
-      expect(usdRequirements[0].amount).toBe("1000");
-      expect(usdRequirements[0].asset).toBe("CCD");
+    it("should throw when USD price has no registered money parser", async () => {
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: "$0.001",
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Cannot resolve USD-denominated price");
     });
 
     it("should use registerMoneyParser for custom conversion", async () => {
@@ -671,7 +669,7 @@ describe("Concordium Integration Tests", () => {
 
         expect(requirements).toHaveLength(1);
         expect(requirements[0].amount).toBe(testCase.expectedAmount);
-        expect(requirements[0].asset).toBe("CCD"); // defaultMoneyConversion returns CCD
+        expect(requirements[0].asset).toBe("CCD"); // raw numbers treated as CCD amounts
       }
     });
   });

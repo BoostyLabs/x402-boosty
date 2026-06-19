@@ -26,8 +26,6 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "@x402/core/types";
-import { parseWallet, buildAccountSigner } from "@concordium/web-sdk";
-import { readFileSync } from "fs";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { UptoEvmScheme } from "@x402/evm/upto/facilitator";
@@ -73,10 +71,12 @@ const PORT = process.env.PORT || "4022";
 
 // Configuration - optional per network (alphabetic order)
 const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string | undefined;
-const ccdFacilitatorPrivateKey = process.env.CCD_FACILITATOR_PRIVATE_KEY as string | undefined;
-const ccdFacilitatorAddress = process.env.CCD_FACILITATOR_ADDRESS as string | undefined;
-const ccdFacilitatorWalletPath = process.env.CCD_FACILITATOR_WALLET_PATH as string | undefined;
-const ccdNetwork: Network = (process.env.CCD_NETWORK as Network | undefined) ?? CONCORDIUM_TESTNET_CAIP2;
+const ccdFacilitatorPrivateKey = process.env.CCD_FACILITATOR_PRIVATE_KEY as
+  | string
+  | undefined;
+const ccdFacilitatorAddress = process.env.CCD_FACILITATOR_ADDRESS as
+  | string
+  | undefined;
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
 const keetaMnemonic = process.env.KEETA_MNEMONIC as string | undefined;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string | undefined;
@@ -90,7 +90,6 @@ const hederaPrivateKey = process.env.HEDERA_PRIVATE_KEY;
 if (
   !avmPrivateKey &&
   !(ccdFacilitatorPrivateKey && ccdFacilitatorAddress) &&
-  !ccdFacilitatorWalletPath &&
   !evmPrivateKey &&
   !keetaMnemonic &&
   !svmPrivateKey &&
@@ -99,14 +98,14 @@ if (
   !(hederaAccountId && hederaPrivateKey)
 ) {
   console.error(
-    "❌ At least one of AVM_PRIVATE_KEY, CCD_FACILITATOR_PRIVATE_KEY + CCD_FACILITATOR_ADDRESS, CCD_FACILITATOR_WALLET_PATH, EVM_PRIVATE_KEY, KEETA_MNEMONIC, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
+    "❌ At least one of AVM_PRIVATE_KEY, CCD_FACILITATOR_PRIVATE_KEY + CCD_FACILITATOR_ADDRESS, EVM_PRIVATE_KEY, KEETA_MNEMONIC, SVM_PRIVATE_KEY, STELLAR_PRIVATE_KEY, TVM_PRIVATE_KEY, or HEDERA_ACCOUNT_ID + HEDERA_PRIVATE_KEY is required",
   );
   process.exit(1);
 }
 
 // Network configuration (alphabetic order)
 const AVM_NETWORK = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="; // Algorand Testnet
-const CCD_NETWORK = ccdNetwork; // Concordium (default: testnet)
+const CCD_NETWORK = "ccd:4221332d34e1694168c2a0c0b3fd0f27"; // Concordium Testnet
 const EVM_NETWORK = "eip155:84532"; // Base Sepolia
 const HEDERA_NETWORK = "hedera:testnet"; // Hedera Testnet
 const KEETA_NETWORK = KEETA_TESTNET_CAIP2; // Keeta Testnet
@@ -155,22 +154,6 @@ if (ccdFacilitatorPrivateKey && ccdFacilitatorAddress) {
 
   facilitator.register(CCD_NETWORK, new ExactConcordiumScheme({ signer }));
   console.info(`CCD Facilitator account: ${ccdFacilitatorAddress} on ${CCD_NETWORK}`);
-}
-
-// Register Concordium scheme if wallet export path is provided (backward-compatible fallback).
-if (!ccdFacilitatorPrivateKey && ccdFacilitatorWalletPath) {
-  const sponsorWallet = parseWallet(readFileSync(ccdFacilitatorWalletPath, "utf8"));
-  const sponsorAddress = sponsorWallet.value.address;
-  const [host, port] = parseGrpcUrl(getConcordiumGrpcUrl(CCD_NETWORK));
-
-  const signer = toConcordiumFacilitatorSigner(
-    sponsorAddress,
-    buildAccountSigner(sponsorWallet),
-    { host, port, useTls: true },
-  );
-
-  facilitator.register(CCD_NETWORK, new ExactConcordiumScheme({ signer }));
-  console.info(`CCD Facilitator account: ${sponsorAddress} on ${CCD_NETWORK}`);
 }
 
 // Register EVM scheme if private key is provided

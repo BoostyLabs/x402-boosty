@@ -2,16 +2,18 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { paymentMiddleware, setSettlementOverrides } from "@x402/hono";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
-import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { BatchSettlementEvmScheme } from "@x402/evm/batch-settlement/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { ExactAptosScheme } from "@x402/aptos/exact/server";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
+import { KEETA_TESTNET_CAIP2 } from "@x402/keeta";
+import { ExactKeetaScheme } from "@x402/keeta/exact/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import { ExactTvmScheme } from "@x402/tvm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import {
   declareEip2612GasSponsoringExtension,
@@ -34,36 +36,35 @@ const EVM_NETWORK = (process.env.EVM_NETWORK || "eip155:84532") as `${string}:${
 const SVM_NETWORK = (process.env.SVM_NETWORK ||
   "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1") as `${string}:${string}`;
 const APTOS_NETWORK = (process.env.APTOS_NETWORK || "aptos:2") as `${string}:${string}`;
-const CCD_NETWORK = (process.env.CCD_NETWORK || "ccd:4221332d34e1694168c2a0c0b3fd0f27") as `${string}:${string}`;
 const HEDERA_NETWORK = (process.env.HEDERA_NETWORK || "hedera:testnet") as `${string}:${string}`;
 const AVM_NETWORK = (process.env.AVM_NETWORK ||
   "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=") as `${string}:${string}`;
+const KEETA_NETWORK = (process.env.KEETA_NETWORK || KEETA_TESTNET_CAIP2) as `${string}:${string}`;
 const STELLAR_NETWORK = (process.env.STELLAR_NETWORK || "stellar:testnet") as `${string}:${string}`;
 const TVM_NETWORK = (process.env.TVM_NETWORK || "tvm:-3") as `${string}:${string}`;
+const CCD_NETWORK = (process.env.CCD_NETWORK || "ccd:4221332d34e1694168c2a0c0b3fd0f27") as `${string}:${string}`;
+const CCD_PAYEE_ADDRESS = process.env.CCD_PAYEE_ADDRESS as string | undefined;
+const CCD_WEATHER_PRICE_MICRO_CCD = "1000";
 const EVM_PAYEE_ADDRESS = process.env.EVM_PAYEE_ADDRESS as `0x${string}`;
 const SVM_PAYEE_ADDRESS = process.env.SVM_PAYEE_ADDRESS as string;
 const APTOS_PAYEE_ADDRESS = process.env.APTOS_PAYEE_ADDRESS as string;
-const CCD_PAYEE_ADDRESS = process.env.CCD_PAYEE_ADDRESS as string | undefined;
 const HEDERA_PAYEE_ADDRESS = process.env.HEDERA_PAYEE_ADDRESS as string | undefined;
+const KEETA_PAYEE_ADDRESS = process.env.KEETA_PAYEE_ADDRESS as string | undefined;
 const AVM_PAYEE_ADDRESS = process.env.AVM_PAYEE_ADDRESS as string;
 const STELLAR_PAYEE_ADDRESS = process.env.STELLAR_PAYEE_ADDRESS as string | undefined;
 const TVM_PAYEE_ADDRESS = process.env.TVM_PAYEE_ADDRESS as string | undefined;
 const HEDERA_ASSET = process.env.HEDERA_ASSET ?? "0.0.0"; // 0.0.0 = HBAR or 0.0.429274 for USDC testnet
 const HEDERA_AMOUNT = process.env.HEDERA_AMOUNT ?? "100000"; // price in smallest units (tinybars or token decimals), defaults to 0.001 HBAR or 0.1 USDC
 const EVM_PERMIT2_ASSET = process.env.EVM_PERMIT2_ASSET as `0x${string}`;
-const CCD_WEATHER_PRICE_MICRO_CCD = "1000";
 const facilitatorUrl = process.env.FACILITATOR_URL;
 
-if (
-  !AVM_PAYEE_ADDRESS &&
-  !APTOS_PAYEE_ADDRESS &&
-  !CCD_PAYEE_ADDRESS &&
-  !EVM_PAYEE_ADDRESS &&
-  !SVM_PAYEE_ADDRESS &&
-  !HEDERA_PAYEE_ADDRESS &&
-  !STELLAR_PAYEE_ADDRESS
-) {
-  console.error("❌ At least one payee address must be configured");
+if (!EVM_PAYEE_ADDRESS) {
+  console.error("❌ EVM_PAYEE_ADDRESS environment variable is required");
+  process.exit(1);
+}
+
+if (!SVM_PAYEE_ADDRESS) {
+  console.error("❌ SVM_PAYEE_ADDRESS environment variable is required");
   process.exit(1);
 }
 
@@ -92,10 +93,8 @@ if (AVM_PAYEE_ADDRESS) {
 if (CCD_PAYEE_ADDRESS) {
   x402Server.register("ccd:*", new ExactConcordiumScheme());
 }
-if (EVM_PAYEE_ADDRESS) {
-  x402Server.register("eip155:*", new ExactEvmScheme());
-  x402Server.register("eip155:*", new UptoEvmScheme());
-}
+x402Server.register("eip155:*", new ExactEvmScheme());
+x402Server.register("eip155:*", new UptoEvmScheme());
 
 // Register batch-settlement scheme for the EVM payee.
 // e2e flow does NOT use ChannelManager — settle actions are handled inline.
@@ -105,22 +104,21 @@ const receiverAuthorizerPrivateKey = process.env.EVM_RECEIVER_AUTHORIZER_PRIVATE
 const receiverAuthorizerSigner = receiverAuthorizerPrivateKey
   ? privateKeyToAccount(receiverAuthorizerPrivateKey)
   : undefined;
-if (EVM_PAYEE_ADDRESS) {
-  x402Server.register(
-    "eip155:*",
-    new BatchSettlementEvmScheme(EVM_PAYEE_ADDRESS, {
-      ...(receiverAuthorizerSigner ? { receiverAuthorizerSigner } : {}),
-    }),
-  );
-}
-if (SVM_PAYEE_ADDRESS) {
-  x402Server.register("solana:*", new ExactSvmScheme());
-}
+x402Server.register(
+  "eip155:*",
+  new BatchSettlementEvmScheme(EVM_PAYEE_ADDRESS, {
+    ...(receiverAuthorizerSigner ? { receiverAuthorizerSigner } : {}),
+  }),
+);
+x402Server.register("solana:*", new ExactSvmScheme());
 if (APTOS_PAYEE_ADDRESS) {
   x402Server.register("aptos:*", new ExactAptosScheme());
 }
 if (HEDERA_PAYEE_ADDRESS) {
   x402Server.register("hedera:*", new ExactHederaScheme());
+}
+if (KEETA_PAYEE_ADDRESS) {
+  x402Server.register("keeta:*", new ExactKeetaScheme());
 }
 if (STELLAR_PAYEE_ADDRESS) {
   x402Server.register("stellar:*", new ExactStellarScheme());
@@ -171,19 +169,6 @@ app.use("/exact/aptos", async (c, next) => {
   await next();
 });
 
-app.use("/exact/ccd", async (c, next) => {
-  if (!CCD_PAYEE_ADDRESS) {
-    return c.json(
-      {
-        error: "Concordium payments not configured",
-        message: "CCD_PAYEE_ADDRESS environment variable is not set",
-      },
-      501,
-    );
-  }
-  await next();
-});
-
 /**
  * Pre-middleware guard for optional Hedera endpoint
  * Returns 501 Not Implemented if Hedera is not configured
@@ -194,6 +179,40 @@ app.use("/exact/hedera", async (c, next) => {
       {
         error: "Hedera payments not configured",
         message: "HEDERA_PAYEE_ADDRESS environment variable is not set",
+      },
+      501,
+    );
+  }
+  await next();
+});
+
+/**
+ * Pre- middleware guard for optional Keeta endpoint
+ * Returns 501 Not Implemented if Keeta is not configured
+ */
+app.get("/exact/keeta", async (c, next) => {
+  if (!KEETA_PAYEE_ADDRESS) {
+    return c.json(
+      {
+        error: "Keeta payments not configured",
+        message: "KEETA_PAYEE_ADDRESS environment variable is not set",
+      },
+      501,
+    );
+  }
+  await next();
+});
+
+/**
+ * Pre-middleware guard for optional Concordium endpoint
+ * Returns 501 Not Implemented if Concordium is not configured
+ */
+app.get("/exact/ccd", async (c, next) => {
+  if (!CCD_PAYEE_ADDRESS) {
+    return c.json(
+      {
+        error: "Concordium payments not configured",
+        message: "CCD_PAYEE_ADDRESS environment variable is not set",
       },
       501,
     );
@@ -273,147 +292,139 @@ app.use(
         : {}),
       ...(CCD_PAYEE_ADDRESS
         ? {
-          "GET /exact/ccd": {
-            accepts: {
-              payTo: CCD_PAYEE_ADDRESS,
-              scheme: "exact",
-              price: {
-                amount: CCD_WEATHER_PRICE_MICRO_CCD,
-                asset: "CCD",
+            "GET /exact/ccd": {
+              accepts: {
+                payTo: CCD_PAYEE_ADDRESS,
+                scheme: "exact",
+                price: {
+                  amount: CCD_WEATHER_PRICE_MICRO_CCD,
+                  asset: "CCD",
+                },
+                network: CCD_NETWORK,
               },
-              network: CCD_NETWORK,
-            },
-            extensions: {
-              ...declareDiscoveryExtension({
-                output: {
-                  example: {
-                    message: "Protected endpoint accessed successfully",
-                    timestamp: "2024-01-01T00:00:00Z",
-                  },
-                  schema: {
-                    properties: {
-                      message: { type: "string" },
-                      timestamp: { type: "string" },
+              extensions: {
+                ...declareDiscoveryExtension({
+                  output: {
+                    example: {
+                      message: "Protected endpoint accessed successfully",
+                      timestamp: "2024-01-01T00:00:00Z",
                     },
-                    required: ["message", "timestamp"],
+                    schema: {
+                      properties: {
+                        message: { type: "string" },
+                        timestamp: { type: "string" },
+                      },
+                      required: ["message", "timestamp"],
+                    },
                   },
-                },
-              }),
-            },
-          },
-        }
-        : {}),
-      ...(EVM_PAYEE_ADDRESS
-        ? {
-          "GET /batch-settlement/evm/eip3009": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "batch-settlement",
-              price: "$0.001",
-              network: EVM_NETWORK,
-            },
-          },
-          "GET /batch-settlement/evm/permit2": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "batch-settlement",
-              network: EVM_NETWORK,
-              price: {
-                amount: "1000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                  name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
-                  version: "2",
-                },
+                }),
               },
             },
-          },
-          "GET /batch-settlement/evm/permit2-eip2612GasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "batch-settlement",
-              network: EVM_NETWORK,
-              price: "$0.001",
-              extra: { assetTransferMethod: "permit2" },
+          }
+        : {}),
+      "GET /batch-settlement/evm/eip3009": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "batch-settlement",
+          price: "$0.001",
+          network: EVM_NETWORK,
+        },
+      },
+      "GET /batch-settlement/evm/permit2": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "batch-settlement",
+          network: EVM_NETWORK,
+          price: {
+            amount: "1000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+              name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
+              version: "2",
             },
-            extensions: {
-              ...declareEip2612GasSponsoringExtension(),
+          },
+        },
+      },
+      "GET /batch-settlement/evm/permit2-eip2612GasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "batch-settlement",
+          network: EVM_NETWORK,
+          price: "$0.001",
+          extra: { assetTransferMethod: "permit2" },
+        },
+        extensions: {
+          ...declareEip2612GasSponsoringExtension(),
+        },
+      },
+      "GET /batch-settlement/evm/permit2-erc20ApprovalGasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "batch-settlement",
+          network: EVM_NETWORK,
+          price: {
+            amount: "1000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
             },
           },
-          "GET /batch-settlement/evm/permit2-erc20ApprovalGasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "batch-settlement",
-              network: EVM_NETWORK,
-              price: {
-                amount: "1000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
+        },
+        extensions: {
+          ...declareErc20ApprovalGasSponsoringExtension(),
+        },
+      },
+      "GET /exact/evm/eip3009": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "exact",
+          price: "$0.001",
+          network: EVM_NETWORK,
+        },
+        extensions: {
+          ...declareDiscoveryExtension({
+            output: {
+              example: {
+                message: "Protected endpoint accessed successfully",
+                timestamp: "2024-01-01T00:00:00Z",
+              },
+              schema: {
+                properties: {
+                  message: { type: "string" },
+                  timestamp: { type: "string" },
                 },
+                required: ["message", "timestamp"],
               },
             },
-            extensions: {
-              ...declareErc20ApprovalGasSponsoringExtension(),
-            },
-          },
-          "GET /exact/evm/eip3009": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "exact",
-              price: "$0.001",
-              network: EVM_NETWORK,
-            },
-            extensions: {
-              ...declareDiscoveryExtension({
-                output: {
-                  example: {
-                    message: "Protected endpoint accessed successfully",
-                    timestamp: "2024-01-01T00:00:00Z",
-                  },
-                  schema: {
-                    properties: {
-                      message: { type: "string" },
-                      timestamp: { type: "string" },
-                    },
-                    required: ["message", "timestamp"],
-                  },
+          }),
+        },
+      },
+      "GET /exact/svm": {
+        accepts: {
+          payTo: SVM_PAYEE_ADDRESS,
+          scheme: "exact",
+          price: "$0.001",
+          network: SVM_NETWORK,
+        },
+        extensions: {
+          ...declareDiscoveryExtension({
+            output: {
+              example: {
+                message: "Protected endpoint accessed successfully",
+                timestamp: "2024-01-01T00:00:00Z",
+              },
+              schema: {
+                properties: {
+                  message: { type: "string" },
+                  timestamp: { type: "string" },
                 },
-              }),
+                required: ["message", "timestamp"],
+              },
             },
-          },
-        }
-        : {}),
-      ...(SVM_PAYEE_ADDRESS
-        ? {
-          "GET /exact/svm": {
-            accepts: {
-              payTo: SVM_PAYEE_ADDRESS,
-              scheme: "exact",
-              price: "$0.001",
-              network: SVM_NETWORK,
-            },
-            extensions: {
-              ...declareDiscoveryExtension({
-                output: {
-                  example: {
-                    message: "Protected endpoint accessed successfully",
-                    timestamp: "2024-01-01T00:00:00Z",
-                  },
-                  schema: {
-                    properties: {
-                      message: { type: "string" },
-                      timestamp: { type: "string" },
-                    },
-                    required: ["message", "timestamp"],
-                  },
-                },
-              }),
-            },
-          },
-        }
-        : {}),
+          }),
+        },
+      },
       ...(APTOS_PAYEE_ADDRESS
         ? {
             "GET /exact/aptos": {
@@ -475,143 +486,175 @@ app.use(
             },
           }
         : {}),
-      ...(EVM_PAYEE_ADDRESS
+      ...(KEETA_PAYEE_ADDRESS
         ? {
-          "GET /exact/evm/permit2": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "exact",
-              network: EVM_NETWORK,
-              price: {
-                amount: "1000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                  name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
-                  version: "2",
-                },
+            "GET /exact/keeta": {
+              accepts: {
+                payTo: KEETA_PAYEE_ADDRESS,
+                scheme: "exact",
+                price: "$0.001",
+                network: KEETA_NETWORK,
               },
-            },
-            extensions: {
-              ...declareDiscoveryExtension({
-                output: {
-                  example: {
-                    message: "Permit2 endpoint accessed successfully",
-                    timestamp: "2024-01-01T00:00:00Z",
-                    method: "permit2",
-                  },
-                  schema: {
-                    properties: {
-                      message: { type: "string" },
-                      timestamp: { type: "string" },
-                      method: { type: "string" },
+              extensions: {
+                ...declareDiscoveryExtension({
+                  output: {
+                    example: {
+                      message: "Protected Keeta endpoint accessed successfully",
+                      timestamp: "2024-01-01T00:00:00Z",
                     },
-                    required: ["message", "timestamp", "method"],
-                  },
-                },
-              }),
-            },
-          },
-          "GET /exact/evm/permit2-eip2612GasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "exact",
-              network: EVM_NETWORK,
-              price: "$0.001",
-              extra: { assetTransferMethod: "permit2" },
-            },
-            extensions: {
-              ...declareDiscoveryExtension({
-                output: {
-                  example: {
-                    message: "Permit2 EIP-2612 endpoint accessed successfully",
-                    timestamp: "2024-01-01T00:00:00Z",
-                    method: "permit2-eip2612",
-                  },
-                  schema: {
-                    properties: {
-                      message: { type: "string" },
-                      timestamp: { type: "string" },
-                      method: { type: "string" },
+                    schema: {
+                      properties: {
+                        message: { type: "string" },
+                        timestamp: { type: "string" },
+                      },
+                      required: ["message", "timestamp"],
                     },
-                    required: ["message", "timestamp", "method"],
                   },
-                },
-              }),
-              ...declareEip2612GasSponsoringExtension(),
-            },
-          },
-          "GET /exact/evm/permit2-erc20ApprovalGasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "exact",
-              network: EVM_NETWORK,
-              price: {
-                amount: "1000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                },
+                }),
               },
             },
-            extensions: {
-              ...declareErc20ApprovalGasSponsoringExtension(),
-            },
-          },
-          "GET /upto/evm/permit2": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "upto",
-              network: EVM_NETWORK,
-              price: {
-                amount: "2000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                  name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
-                  version: "2",
-                },
-              },
-            },
-          },
-          "GET /upto/evm/permit2-eip2612GasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "upto",
-              network: EVM_NETWORK,
-              price: {
-                amount: "2000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                  name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
-                  version: "2",
-                },
-              },
-            },
-            extensions: {
-              ...declareEip2612GasSponsoringExtension(),
-            },
-          },
-          "GET /upto/evm/permit2-erc20ApprovalGasSponsoring": {
-            accepts: {
-              payTo: EVM_PAYEE_ADDRESS,
-              scheme: "upto",
-              network: EVM_NETWORK,
-              price: {
-                amount: "2000",
-                asset: EVM_PERMIT2_ASSET,
-                extra: {
-                  assetTransferMethod: "permit2",
-                },
-              },
-            },
-            extensions: {
-              ...declareErc20ApprovalGasSponsoringExtension(),
-            },
-          },
-        }
+          }
         : {}),
+      "GET /exact/evm/permit2": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "exact",
+          network: EVM_NETWORK,
+          price: {
+            amount: "1000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+              name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
+              version: "2",
+            },
+          },
+        },
+        extensions: {
+          ...declareDiscoveryExtension({
+            output: {
+              example: {
+                message: "Permit2 endpoint accessed successfully",
+                timestamp: "2024-01-01T00:00:00Z",
+                method: "permit2",
+              },
+              schema: {
+                properties: {
+                  message: { type: "string" },
+                  timestamp: { type: "string" },
+                  method: { type: "string" },
+                },
+                required: ["message", "timestamp", "method"],
+              },
+            },
+          }),
+        },
+      },
+      "GET /exact/evm/permit2-eip2612GasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "exact",
+          network: EVM_NETWORK,
+          price: "$0.001",
+          // Use pre-parsed price with assetTransferMethod to force Permit2
+          extra: { assetTransferMethod: "permit2" },
+        },
+        extensions: {
+          ...declareDiscoveryExtension({
+            output: {
+              example: {
+                message: "Permit2 EIP-2612 endpoint accessed successfully",
+                timestamp: "2024-01-01T00:00:00Z",
+                method: "permit2-eip2612",
+              },
+              schema: {
+                properties: {
+                  message: { type: "string" },
+                  timestamp: { type: "string" },
+                  method: { type: "string" },
+                },
+                required: ["message", "timestamp", "method"],
+              },
+            },
+          }),
+          ...declareEip2612GasSponsoringExtension(),
+        },
+      },
+      "GET /exact/evm/permit2-erc20ApprovalGasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "exact",
+          network: EVM_NETWORK,
+          price: {
+            amount: "1000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+            },
+          },
+        },
+        extensions: {
+          ...declareErc20ApprovalGasSponsoringExtension(),
+        },
+      },
+      // Upto Permit2 direct endpoint - client must have Permit2 pre-approved
+      // Authorizes up to 2000 atomic units, settles 1000 (partial settlement)
+      "GET /upto/evm/permit2": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "upto",
+          network: EVM_NETWORK,
+          price: {
+            amount: "2000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+              name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
+              version: "2",
+            },
+          },
+        },
+      },
+      // Upto Permit2 endpoint with EIP-2612 gas sponsoring
+      // Authorizes up to 2000 atomic units, settles 1000 (partial settlement)
+      "GET /upto/evm/permit2-eip2612GasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "upto",
+          network: EVM_NETWORK,
+          price: {
+            amount: "2000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+              name: EVM_NETWORK == "eip155:84532" ? "USDC" : "USD Coin",
+              version: "2",
+            },
+          },
+        },
+        extensions: {
+          ...declareEip2612GasSponsoringExtension(),
+        },
+      },
+      // Upto Permit2 endpoint for ERC-20 approval gas sponsoring (no EIP-2612)
+      // Authorizes up to 2000 atomic units, settles 1000 (partial settlement)
+      "GET /upto/evm/permit2-erc20ApprovalGasSponsoring": {
+        accepts: {
+          payTo: EVM_PAYEE_ADDRESS,
+          scheme: "upto",
+          network: EVM_NETWORK,
+          price: {
+            amount: "2000",
+            asset: EVM_PERMIT2_ASSET,
+            extra: {
+              assetTransferMethod: "permit2",
+            },
+          },
+        },
+        extensions: {
+          ...declareErc20ApprovalGasSponsoringExtension(),
+        },
+      },
       ...(STELLAR_PAYEE_ADDRESS
         ? {
             "GET /exact/stellar": {
@@ -736,13 +779,6 @@ app.get("/exact/svm", c => {
   });
 });
 
-app.get("/exact/ccd", c => {
-  return c.json({
-    message: "Protected endpoint accessed successfully",
-    timestamp: new Date().toISOString(),
-  });
-});
-
 /**
  * Protected AVM endpoint - requires payment to access
  *
@@ -780,6 +816,32 @@ app.get("/exact/aptos", c => {
 app.get("/exact/hedera", c => {
   return c.json({
     message: "Protected Hedera endpoint accessed successfully",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * Protected Keeta endpoint - requires payment to access
+ *
+ * This endpoint demonstrates a resource protected by x402 payment middleware for Keeta.
+ * Note: 501 check is handled by pre-middleware guard above.
+ */
+app.get("/exact/keeta", c => {
+  return c.json({
+    message: "Protected Keeta endpoint accessed successfully",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * Protected Concordium endpoint - requires payment via Concordium exact scheme
+ *
+ * This endpoint demonstrates a resource protected by x402 payment middleware for Concordium.
+ * Note: 501 check is handled by pre-middleware guard above.
+ */
+app.get("/exact/ccd", c => {
+  return c.json({
+    message: "Protected Concordium endpoint accessed successfully",
     timestamp: new Date().toISOString(),
   });
 });
@@ -927,12 +989,16 @@ console.log(`
 ║  SVM Network:    ${SVM_NETWORK}                         ║
 ║  Aptos Network:  ${APTOS_NETWORK}                       ║
 ║  Hedera Network: ${HEDERA_NETWORK}                      ║
+║  Keeta Network:  ${KEETA_NETWORK}                       ║
 ║  Stellar Network: ${STELLAR_NETWORK}                    ║
+║  CCD Network:    ${CCD_NETWORK}                          ║
 ║  AVM Payee:      ${AVM_PAYEE_ADDRESS || "(not configured)"}
 ║  EVM Payee:      ${EVM_PAYEE_ADDRESS}                   ║
 ║  SVM Payee:      ${SVM_PAYEE_ADDRESS}                   ║
 ║  Aptos Payee:    ${APTOS_PAYEE_ADDRESS || "(not configured)"}
 ║  Hedera Payee:   ${HEDERA_PAYEE_ADDRESS || "(not configured)"}
+║  Keeta Payee:    ${KEETA_PAYEE_ADDRESS || "(not configured)"}
+║  CCD Payee:      ${CCD_PAYEE_ADDRESS || "(not configured)"}
 ║  Stellar Payee:  ${STELLAR_PAYEE_ADDRESS || "(not configured)"}
 ║                                                        ║
 ║  Endpoints:                                            ║
@@ -944,6 +1010,8 @@ console.log(`
 ║  • GET  /exact/svm                            (SVM)           ║
 ║  • GET  /exact/aptos                          (Aptos)         ║
 ║  • GET  /exact/hedera                         (Hedera)        ║
+║  • GET  /exact/keeta                          (Keeta)         ║
+║  • GET  /exact/ccd                            (CCD)           ║
 ║  • GET  /exact/stellar                        (Stellar)       ║
 ║  • GET  /health                  (no payment required)     ║
 ║  • POST /close                   (shutdown server)         ║

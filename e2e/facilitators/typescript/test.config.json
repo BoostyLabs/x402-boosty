@@ -35,7 +35,9 @@
   },
   "environment": {
     "required": [
-      "PORT"
+      "PORT",
+      "EVM_PRIVATE_KEY",
+      "SVM_PRIVATE_KEY"
     ],
     "optional": [
       "AVM_PRIVATE_KEY",
@@ -43,10 +45,8 @@
       "CCD_FACILITATOR_WALLET_PATH",
       "CCD_NETWORK",
       "CCD_GRPC_URL",
-      "EVM_PRIVATE_KEY",
       "HEDERA_ACCOUNT_ID",
       "HEDERA_PRIVATE_KEY",
-      "SVM_PRIVATE_KEY",
       "KEETA_FACILITATOR_MNEMONIC",
       "STELLAR_PRIVATE_KEY",
       "TVM_PRIVATE_KEY",

@@ -3,7 +3,6 @@ import { wrapFetchWithPayment } from "@x402/fetch";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
-import { ExactConcordiumScheme } from "@x402/concordium/exact/client";
 import { ExactEvmScheme, type ExactEvmSchemeOptions } from "@x402/evm/exact/client";
 import {
   UptoEvmScheme as UptoEvmClientScheme,
@@ -26,12 +25,12 @@ import { ExactTvmScheme } from "@x402/tvm/exact/client";
 import { toClientTvmSigner, TVM_PROVIDER_TONAPI, TVM_PROVIDER_TONCENTER } from "@x402/tvm";
 import { ExactAvmScheme as ExactAvmClientScheme } from "@x402/avm/exact/client";
 import { toClientAvmSigner } from "@x402/avm";
-import { AccountAddress, buildAccountSigner, buildBasicAccountSigner, parseWallet } from "@concordium/web-sdk";
+import { ExactConcordiumScheme } from "@x402/concordium/exact/client";
+import { AccountAddress, buildBasicAccountSigner } from "@concordium/web-sdk";
 import * as KeetaNet from "@keetanetwork/keetanet-client";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { keyPairFromSeed, type KeyPair } from "@ton/crypto";
-import { readFileSync } from "node:fs";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 
 config();
@@ -39,13 +38,34 @@ config();
 const baseURL = process.env.RESOURCE_SERVER_URL as string;
 const endpointPath = process.env.ENDPOINT_PATH as string;
 const url = `${baseURL}${endpointPath}`;
-const ccdWalletPath = process.env.CCD_WALLET_PATH;
-const ccdPrivateKey = process.env.CCD_PRIVATE_KEY;
-const ccdAddress = process.env.CCD_ADDRESS;
+const evmAccount = privateKeyToAccount(process.env.EVM_PRIVATE_KEY as `0x${string}`);
+const svmSigner = await createKeyPairSignerFromBytes(
+  base58.decode(process.env.SVM_PRIVATE_KEY as string),
+);
+
 const evmNetwork = process.env.EVM_NETWORK || "eip155:84532";
 const evmRpcUrl = process.env.EVM_RPC_URL;
 const evmChain = evmNetwork === "eip155:8453" ? base : baseSepolia;
 
+const publicClient = createPublicClient({
+  chain: evmChain,
+  transport: http(evmRpcUrl),
+});
+
+const evmSigner = toClientEvmSigner(evmAccount, publicClient);
+
+const evmSchemeOptions: ExactEvmSchemeOptions | undefined = process.env.EVM_RPC_URL
+  ? { rpcUrl: process.env.EVM_RPC_URL }
+  : undefined;
+
+const uptoSchemeOptions: UptoEvmSchemeOptions | undefined = process.env.EVM_RPC_URL
+  ? { rpcUrl: process.env.EVM_RPC_URL }
+  : undefined;
+const svmSchemeOptions = process.env.SVM_RPC_URL ? { rpcUrl: process.env.SVM_RPC_URL } : undefined;
+
+
+const ccdPrivateKey = process.env.CCD_PRIVATE_KEY;
+const ccdAddress = process.env.CCD_ADDRESS;
 /**
  * Parses the TVM private key accepted by e2e env fixtures.
  *
@@ -65,6 +85,21 @@ function parseTvmKeyPair(privateKey: string): KeyPair {
   }
   return keyPairFromSeed(bytes.subarray(0, 32));
 }
+
+// Batch-settlement scheme uses a per-scenario salt (CHANNEL_SALT) so concurrent
+// e2e runs don't collide on the same on-chain channel id. An optional voucher
+// signer (EVM_VOUCHER_SIGNER_PRIVATE_KEY) exercises the alt-EOA voucher branch
+// while deposits keep using the main client signer.
+const channelSalt = process.env.CHANNEL_SALT as `0x${string}` | undefined;
+const voucherSignerKey = process.env.EVM_VOUCHER_SIGNER_PRIVATE_KEY as `0x${string}` | undefined;
+const voucherSigner = voucherSignerKey
+  ? toClientEvmSigner(privateKeyToAccount(voucherSignerKey), publicClient)
+  : undefined;
+const batchSettlementOptions =
+  channelSalt || voucherSigner
+    ? { ...(channelSalt ? { salt: channelSalt } : {}), ...(voucherSigner ? { voucherSigner } : {}) }
+    : undefined;
+const batchSettlementScheme = new BatchSettlementEvmScheme(evmSigner, batchSettlementOptions);
 
 // Initialize Aptos signer if key is provided
 let aptosAccount: Account | undefined;
@@ -111,6 +146,7 @@ let avmSigner: ReturnType<typeof toClientAvmSigner> | undefined;
 if (process.env.AVM_PRIVATE_KEY) {
   avmSigner = toClientAvmSigner(process.env.AVM_PRIVATE_KEY);
 }
+
 const tvmNetwork = process.env.TVM_NETWORK || "tvm:-3";
 const tvmPrivateKey = process.env.TVM_PRIVATE_KEY;
 const tvmProvider = (process.env.TVM_PROVIDER || TVM_PROVIDER_TONCENTER).toLowerCase();
@@ -130,9 +166,16 @@ const tvmScheme = tvmPrivateKey
       }),
     )
   : undefined;
-const client = new x402Client();
-let batchSettlementScheme: BatchSettlementEvmScheme | undefined;
 
+const client = new x402Client()
+  .register("eip155:*", new ExactEvmScheme(evmSigner, evmSchemeOptions))
+  .register("eip155:*", new UptoEvmClientScheme(evmSigner, uptoSchemeOptions))
+  .register("eip155:*", batchSettlementScheme)
+  .registerV1("base-sepolia", new ExactEvmSchemeV1(evmSigner))
+  .registerV1("base", new ExactEvmSchemeV1(evmSigner))
+  .register("solana:*", new ExactSvmScheme(svmSigner, svmSchemeOptions))
+  .registerV1("solana-devnet", new ExactSvmSchemeV1(svmSigner, svmSchemeOptions))
+  .registerV1("solana", new ExactSvmSchemeV1(svmSigner, svmSchemeOptions));
 if (ccdPrivateKey && ccdAddress) {
   client.register(
     "ccd:*",
@@ -144,70 +187,6 @@ if (ccdPrivateKey && ccdAddress) {
       process.env.CCD_GRPC_URL ? { grpcUrl: process.env.CCD_GRPC_URL } : undefined,
     ),
   );
-} else if (ccdWalletPath) {
-  const walletExport = parseWallet(readFileSync(ccdWalletPath, "utf8"));
-  client.register(
-    "ccd:*",
-    new ExactConcordiumScheme(
-      {
-        accountAddress: AccountAddress.fromBase58(walletExport.value.address),
-        signer: buildAccountSigner(walletExport),
-      },
-      process.env.CCD_GRPC_URL ? { grpcUrl: process.env.CCD_GRPC_URL } : undefined,
-    ),
-  );
-}
-
-if (process.env.EVM_PRIVATE_KEY) {
-  const evmAccount = privateKeyToAccount(process.env.EVM_PRIVATE_KEY as `0x${string}`);
-  const publicClient = createPublicClient({
-    chain: evmChain,
-    transport: http(evmRpcUrl),
-  });
-  const evmSigner = toClientEvmSigner(evmAccount, publicClient);
-  const evmSchemeOptions: ExactEvmSchemeOptions | undefined = process.env.EVM_RPC_URL
-    ? { rpcUrl: process.env.EVM_RPC_URL }
-    : undefined;
-  const uptoSchemeOptions: UptoEvmSchemeOptions | undefined = process.env.EVM_RPC_URL
-    ? { rpcUrl: process.env.EVM_RPC_URL }
-    : undefined;
-  // Batch-settlement scheme uses a per-scenario salt (CHANNEL_SALT) so concurrent
-  // e2e runs don't collide on the same on-chain channel id. An optional voucher
-  // signer (EVM_VOUCHER_SIGNER_PRIVATE_KEY) exercises the alt-EOA voucher branch
-  // while deposits keep using the main client signer.
-  const channelSalt = process.env.CHANNEL_SALT as `0x${string}` | undefined;
-  const voucherSignerKey = process.env.EVM_VOUCHER_SIGNER_PRIVATE_KEY as
-    | `0x${string}`
-    | undefined;
-  const voucherSigner = voucherSignerKey
-    ? toClientEvmSigner(privateKeyToAccount(voucherSignerKey), publicClient)
-    : undefined;
-  const batchSettlementOptions =
-    channelSalt || voucherSigner
-      ? {
-        ...(channelSalt ? { salt: channelSalt } : {}),
-        ...(voucherSigner ? { voucherSigner } : {}),
-      }
-      : undefined;
-
-  batchSettlementScheme = new BatchSettlementEvmScheme(evmSigner, batchSettlementOptions);
-  client
-    .register("eip155:*", new ExactEvmScheme(evmSigner, evmSchemeOptions))
-    .register("eip155:*", new UptoEvmClientScheme(evmSigner, uptoSchemeOptions))
-    .register("eip155:*", batchSettlementScheme)
-    .registerV1("base-sepolia", new ExactEvmSchemeV1(evmSigner))
-    .registerV1("base", new ExactEvmSchemeV1(evmSigner));
-}
-
-if (process.env.SVM_PRIVATE_KEY) {
-  const svmSigner = await createKeyPairSignerFromBytes(
-    base58.decode(process.env.SVM_PRIVATE_KEY as string),
-  );
-  const svmSchemeOptions = process.env.SVM_RPC_URL ? { rpcUrl: process.env.SVM_RPC_URL } : undefined;
-  client
-    .register("solana:*", new ExactSvmScheme(svmSigner, svmSchemeOptions))
-    .registerV1("solana-devnet", new ExactSvmSchemeV1(svmSigner, svmSchemeOptions))
-    .registerV1("solana", new ExactSvmSchemeV1(svmSigner, svmSchemeOptions));
 }
 if (aptosAccount) {
   client.register("aptos:*", new ExactAptosScheme(aptosAccount));
@@ -315,9 +294,6 @@ if (batchSettlementPhase === "initial") {
 }
 
 if (batchSettlementPhase === "recovery-refund") {
-  if (!batchSettlementScheme) {
-    throw new Error("Batch-settlement phase requires EVM_PRIVATE_KEY");
-  }
   const recoveryVoucher = await issueRequest();
   const refundSettle = await batchSettlementScheme.refund(url);
   const refund = {
@@ -338,9 +314,6 @@ if (batchSettlementPhase === "recovery-refund") {
 }
 
 if (batchSettlementPhase === "full") {
-  if (!batchSettlementScheme) {
-    throw new Error("Batch-settlement phase requires EVM_PRIVATE_KEY");
-  }
   const deposit = await issueRequest();
   const voucher = await issueRequest();
   const refundSettle = await batchSettlementScheme.refund(url);

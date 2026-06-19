@@ -132,26 +132,3 @@ The default asset is chosen **per chain** based on:
 | **TypeScript** | `typescript/packages/mechanisms/evm/src/shared/defaultAssets.ts` | `DEFAULT_STABLECOINS` |
 | **Go** | `go/mechanisms/evm/constants.go` | `NetworkConfigs` |
 | **Python** | `python/x402/mechanisms/evm/constants.py` | `NETWORK_CONFIGS` |
-
-## Concordium Default Asset
-
-Concordium uses **CCD** (the native token) as its default asset for USD-denominated prices. CCD has 6 decimals, so `$0.001` converts to `1000` microCCD.
-
-### Mechanism
-
-| Mechanism | File | Default |
-|-----------|------|---------|
-| **Exact** | `typescript/packages/mechanisms/concordium/src/exact/server/scheme.ts` | `defaultMoneyConversion()` → CCD, 6 decimals |
-
-### How it works
-
-The `ExactConcordiumScheme.defaultMoneyConversion()` method is the final fallback in the `parsePrice` chain:
-
-1. Custom `registerMoneyParser()` handlers are tried first
-2. If none match, `defaultMoneyConversion` converts the decimal amount to microCCD
-
-Unlike EVM chains where the default is a stablecoin (USDC), Concordium uses the native CCD token. Servers that want stablecoin pricing on Concordium should register a PLT token (e.g., EURR) via `registerAsset()` and use `registerMoneyParser()` to route USD prices to that token.
-
-### Adding a new Concordium-based chain
-
-No cross-SDK lockstep is required — the default is always native CCD. New Concordium networks are supported automatically.
