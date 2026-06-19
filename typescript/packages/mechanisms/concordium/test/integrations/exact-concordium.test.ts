@@ -28,7 +28,7 @@ import { ExactConcordiumScheme as ExactConcordiumServer } from "../../src/exact/
 import { ExactConcordiumScheme as ExactConcordiumFacilitator } from "../../src/exact/facilitator/scheme";
 import { toConcordiumFacilitatorSigner } from "../../src/signer";
 import type { ClientConcordiumSigner } from "../../src/signer";
-import type { ExactConcordiumPayloadV2 } from "../../src/types";
+import type { ExactConcordiumPayloadV2, SimpleTransferPayload } from "../../src/types";
 import {
   CONCORDIUM_TESTNET_CAIP2,
   getConcordiumGrpcUrl,
@@ -672,5 +672,541 @@ describe("Concordium Integration Tests", () => {
         expect(requirements[0].asset).toBe("CCD"); // raw numbers treated as CCD amounts
       }
     });
+  });
+
+  describe("ExactConcordiumClient - Payment Payload Validation", () => {
+    let concordiumClient: ExactConcordiumClient;
+
+    beforeAll(() => {
+      concordiumClient = new ExactConcordiumClient(clientSigner);
+    });
+
+    it("should reject missing account address", async () => {
+      const brokenClient = new ExactConcordiumClient({
+        accountAddress: undefined as any,
+        signer: {} as any,
+      });
+      await expect(
+        brokenClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("Concordium account address is required");
+    });
+
+    it("should reject missing payTo", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: undefined as any,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("payTo address is required");
+    });
+
+    it("should reject empty amount", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject undefined amount", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: undefined as any,
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject USD-formatted amount like '$0.001'", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "$0.001",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject decimal amount like '0.001'", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "0.001",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject non-numeric amount like 'abc'", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "abc",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject missing feePayer", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: {},
+        }),
+      ).rejects.toThrow("requirements.extra.feePayer is required");
+    });
+
+    it("should reject empty feePayer string", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: "" },
+        }),
+      ).rejects.toThrow("requirements.extra.feePayer is required");
+    });
+
+    it("should reject maxTimeoutSeconds <= 5", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 3,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("requirements.maxTimeoutSeconds must be an integer greater than 5");
+    });
+
+    it("should reject non-integer maxTimeoutSeconds", async () => {
+      await expect(
+        concordiumClient.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: PAY_TO_ADDRESS!,
+          maxTimeoutSeconds: 10.5,
+          extra: { feePayer: facilitatorAddress },
+        }),
+      ).rejects.toThrow("requirements.maxTimeoutSeconds must be an integer greater than 5");
+    });
+  });
+
+  describe("Security Validation", () => {
+    let client: x402Client;
+    let server: x402ResourceServer;
+    let facilitatorClient: ConcordiumFacilitatorClient;
+
+    beforeEach(async () => {
+      const concordiumClient = new ExactConcordiumClient(clientSigner);
+      client = new x402Client().register(CONCORDIUM_TESTNET_CAIP2, concordiumClient);
+
+      const concordiumFacilitator = new ExactConcordiumFacilitator({
+        signer: facilitatorSigner,
+        requireFinalization: true,
+        finalizationTimeoutMs: 90_000,
+      });
+      const facilitator = new x402Facilitator().register(
+        CONCORDIUM_TESTNET_CAIP2,
+        concordiumFacilitator,
+      );
+
+      facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
+      server = new x402ResourceServer(facilitatorClient);
+      server.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer());
+      await server.initialize();
+    });
+
+    it("should reject an expired transaction", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const shortLivedReq = {
+        ...accepts[0],
+        maxTimeoutSeconds: 6,
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse([shortLivedReq], resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      // Wait for the transaction to expire (6s + 1s buffer)
+      await new Promise(resolve => setTimeout(resolve, 7_000));
+
+      const accepted = server.findMatchingRequirements([shortLivedReq], paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(false);
+    }, 15_000);
+
+    it("should reject a transaction with tampered signature", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      // Tamper with the signature: flip the last character of the sender signature
+      const concordiumPayload = paymentPayload.payload as unknown as ExactConcordiumPayloadV2;
+      const sigMap = concordiumPayload.signedTransaction.signatures.sender;
+      const firstKey = Object.keys(sigMap)[0];
+      const firstSigMap = sigMap[firstKey];
+      const firstSigKey = Object.keys(firstSigMap)[0];
+      const originalSig = firstSigMap[firstSigKey];
+      const tamperedSig =
+        originalSig.slice(0, -1) + (originalSig[originalSig.length - 1] === "0" ? "1" : "0");
+      firstSigMap[firstSigKey] = tamperedSig;
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(false);
+    });
+
+    it("should reject a transaction with wrong amount", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      // Tamper with the amount in the signed transaction payload
+      const concordiumPayload = paymentPayload.payload as unknown as ExactConcordiumPayloadV2;
+      (concordiumPayload.signedTransaction.payload as SimpleTransferPayload).amount = "1";
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(false);
+    });
+
+    it("should reject a transaction with wrong payTo address", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      // Tamper with the payTo address in the signed transaction
+      const concordiumPayload = paymentPayload.payload as unknown as ExactConcordiumPayloadV2;
+      (concordiumPayload.signedTransaction.payload as SimpleTransferPayload).toAddress =
+        "3kBx2h5Y2veb4hZvAE2c1Zr6DYJwWbPr9xQJJBPWyFnXHF9UuN";
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(false);
+    });
+  });
+
+  describe("Edge Cases", () => {
+    let client: x402Client;
+    let server: x402ResourceServer;
+    let facilitatorClient: ConcordiumFacilitatorClient;
+
+    beforeEach(async () => {
+      const concordiumClient = new ExactConcordiumClient(clientSigner);
+      client = new x402Client().register(CONCORDIUM_TESTNET_CAIP2, concordiumClient);
+
+      const concordiumFacilitator = new ExactConcordiumFacilitator({
+        signer: facilitatorSigner,
+        requireFinalization: true,
+        finalizationTimeoutMs: 90_000,
+      });
+      const facilitator = new x402Facilitator().register(
+        CONCORDIUM_TESTNET_CAIP2,
+        concordiumFacilitator,
+      );
+
+      facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
+      server = new x402ResourceServer(facilitatorClient);
+      server.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer());
+      await server.initialize();
+    });
+
+    it("should reject network mismatch (mainnet tx for testnet facilitator)", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      // Tamper: change accepted network to mainnet
+      paymentPayload.accepted.network = "concordium:mainnet" as any;
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      if (accepted) {
+        const verifyResponse = await server.verifyPayment(paymentPayload, accepted);
+        expect(verifyResponse.isValid).toBe(false);
+      }
+    });
+
+    it("should detect replay of an already settled transaction", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium",
+        description: "Premium content",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      // First payment: verify + settle
+      const verifyResponse1 = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse1.isValid).toBe(true);
+
+      const settleResponse1 = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse1.success).toBe(true);
+
+      // Second attempt: try to verify the same payload again (replay)
+      const verifyResponse2 = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse2.isValid).toBe(false);
+    }, 30_000);
+  });
+
+  describe("Robustness", () => {
+    let client: x402Client;
+    let server: x402ResourceServer;
+    let facilitatorClient: ConcordiumFacilitatorClient;
+
+    beforeEach(async () => {
+      const concordiumClient = new ExactConcordiumClient(clientSigner);
+      client = new x402Client().register(CONCORDIUM_TESTNET_CAIP2, concordiumClient);
+
+      const concordiumFacilitator = new ExactConcordiumFacilitator({
+        signer: facilitatorSigner,
+        requireFinalization: true,
+        finalizationTimeoutMs: 90_000,
+      });
+      const facilitator = new x402Facilitator().register(
+        CONCORDIUM_TESTNET_CAIP2,
+        concordiumFacilitator,
+      );
+
+      facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
+      server = new x402ResourceServer(facilitatorClient);
+      const concordiumServer = new ExactConcordiumServer();
+      concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
+      server.register(CONCORDIUM_TESTNET_CAIP2, concordiumServer);
+      await server.initialize();
+    });
+
+    it("should allow client to select from multiple asset options", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress, "CCD"),
+        buildConcordiumPaymentRequirements(
+          PAY_TO_ADDRESS!,
+          "1000000",
+          facilitatorAddress,
+          "EURR",
+          CONCORDIUM_TESTNET_CAIP2,
+          { decimals: 6 },
+        ),
+      ];
+      const resource = {
+        url: "https://example.com/premium-multi",
+        description: "Premium content - multi asset",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+      expect(["CCD", "EURR"]).toContain(paymentPayload.accepted.asset);
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(true);
+
+      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse.success).toBe(true);
+      expect(settleResponse.transaction).toBeDefined();
+
+      logExplorerUrl(settleResponse.transaction);
+    }, 30_000);
+
+    it("should handle very large CCD amounts without overflow", async () => {
+      const largeAmount = "1000000000000000"; // 1,000,000,000 CCD in microCCD
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, largeAmount, facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium-large",
+        description: "Premium content - large amount",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      const concordiumPayload = paymentPayload.payload as unknown as ExactConcordiumPayloadV2;
+      expect(concordiumPayload.signedTransaction.payload).toBeDefined();
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      // Verification may fail due to insufficient balance; key check: no overflow/crash
+      expect(verifyResponse).toBeDefined();
+
+      // Settlement will fail due to insufficient funds — that's expected
+      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse.success).toBe(false);
+    }, 30_000);
+
+    it("should reject payment with a non-existent token ID", async () => {
+      const fakeTokenId = "non-existent-token-12345";
+      const accepts = [
+        buildConcordiumPaymentRequirements(
+          PAY_TO_ADDRESS!,
+          "1000000",
+          facilitatorAddress,
+          fakeTokenId,
+          CONCORDIUM_TESTNET_CAIP2,
+          { decimals: 6 },
+        ),
+      ];
+      const resource = {
+        url: "https://example.com/premium-fake-token",
+        description: "Premium content - fake token",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      // Token does not exist on chain — settlement must fail
+      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse.success).toBe(false);
+    }, 15_000);
+
+    it("should handle duplicate asset entries in requirements", async () => {
+      // Server offers two CCD entries with different amounts (simulates misconfiguration)
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "1000000", facilitatorAddress, "CCD"),
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, "500000", facilitatorAddress, "CCD"),
+      ];
+      const resource = {
+        url: "https://example.com/premium-dup",
+        description: "Premium content - duplicate assets",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      // Client should handle duplicate assets gracefully — pick one and proceed
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+      expect(paymentPayload.accepted.asset).toBe("CCD");
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      expect(verifyResponse.isValid).toBe(true);
+
+      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+      expect(settleResponse.success).toBe(true);
+      expect(settleResponse.transaction).toBeDefined();
+
+      logExplorerUrl(settleResponse.transaction);
+    }, 30_000);
   });
 });

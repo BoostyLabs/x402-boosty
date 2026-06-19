@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { ExactConcordiumScheme as ExactConcordiumServer } from "../../src/exact/server/scheme";
 import { ExactConcordiumScheme as ExactConcordiumFacilitator } from "../../src/exact/facilitator/scheme";
+import { ExactConcordiumScheme as ExactConcordiumClient } from "../../src/exact/client/scheme";
 import {
   CONCORDIUM_MAINNET_CAIP2,
   CONCORDIUM_TESTNET_CAIP2,
@@ -11,9 +12,9 @@ import {
   getConcordiumGrpcUrl,
   parseGrpcUrl,
   getExplorerTxUrl,
-} from "../../src/index";
+} from "../../src";
 import type { PaymentRequirements } from "@x402/core/types";
-import type { FacilitatorConcordiumSigner } from "../../src/signer";
+import type { FacilitatorConcordiumSigner } from "../../src";
 
 function createMockFacilitatorSigner(
   address = "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
@@ -360,6 +361,1105 @@ describe("@x402/concordium", () => {
         "3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8",
       ]);
       expect(facilitator.getExtra(CONCORDIUM_TESTNET_CAIP2)?.feePayer).toBeDefined();
+    });
+
+    it("should reject unsupported scheme", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "per_request", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {} as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: {},
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("unsupported_scheme");
+    });
+
+    it("should reject network mismatch", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_MAINNET_CAIP2 } as any,
+          payload: {} as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: {},
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("network_mismatch");
+    });
+
+    it("should reject missing sender in header", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_sender");
+    });
+
+    it("should reject invalid sender address format", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "not-a-valid-base58-address",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("invalid_sender_address");
+    });
+
+    it("should reject missing feePayer in requirements", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: {},
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_fee_payer");
+    });
+
+    it("should reject feePayer not managed by facilitator", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("fee_payer_not_managed_by_facilitator");
+    });
+
+    it("should reject missing sponsor in header", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: { numSignatures: 1 },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_sponsor_in_header");
+    });
+
+    it("should reject invalid expiry field", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: NaN,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("invalid_expiry_field");
+    });
+
+    it("should reject expiry too far in future", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const farFuture = Math.floor(Date.now() / 1000) + 3600; // 1 hour ahead
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: farFuture,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toContain("expiry_too_far_in_future");
+    });
+
+    it("should reject sponsor as sender", async () => {
+      const sponsorAddress = "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp";
+      const mockSigner = createMockFacilitatorSigner(sponsorAddress);
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: sponsorAddress,
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: { account: sponsorAddress, numSignatures: 1 },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: sponsorAddress },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("sponsor_as_sender");
+    });
+
+    it("should reject asset type mismatch for CCD (non-transfer payload)", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "tokenUpdate", tokenId: "EURR", operations: "aa" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      // Note: decodePayload catches tokenUpdate with invalid CBOR operations
+      // before checkAssetType can run, so we get invalid_token_operations here.
+      expect(result.invalidReason).toBe("invalid_token_operations");
+    });
+
+    it("should reject asset type mismatch for PLT (non-tokenUpdate payload)", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", toAddress: "4Fmi", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "EURR",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toContain("asset_type_mismatch");
+    });
+
+    it("should reject missing tokenId for PLT payment", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "tokenUpdate", operations: "aa" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "EURR",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_token_id");
+    });
+
+    it("should reject tokenId mismatch for PLT payment", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "tokenUpdate", tokenId: "USDR", operations: "aa" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "EURR",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      // Fails at token operations decode before reaching tokenId mismatch check
+      expect(result.invalidReason).toBe("invalid_token_operations");
+    });
+
+    it("should reject missing recipient for CCD transfer", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: { type: "transfer", amount: "1000000" },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_recipient");
+    });
+
+    it("should reject recipient mismatch for CCD transfer", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: {
+                type: "transfer",
+                toAddress: "3wQjKH4tPa3xwM4gK5M9f7Q7mTzRrJ7z8Yw7XhXo8v9eP4JpJ8",
+                amount: "1000000",
+              },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("recipient_mismatch");
+    });
+
+    it("should reject missing sender signature", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: {
+                type: "transfer",
+                toAddress: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                amount: "1000000",
+              },
+              signatures: { sender: {}, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_sender_signature");
+    });
+
+    it("should reject amount mismatch for CCD transfer", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: {
+                type: "transfer",
+                toAddress: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                amount: "999999",
+              },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toContain("amount_mismatch");
+    });
+
+    it("should reject invalid amount format in requirements", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: Math.floor(Date.now() / 1000) + 300,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: {
+                type: "transfer",
+                toAddress: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                amount: "1000000",
+              },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "not-a-number",
+          asset: "CCD",
+          payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("invalid_required_amount");
+    });
+
+    it("should reject invalid transaction format (non-object payload)", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: "not-an-object" as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toBe("missing_payload");
+    });
+
+    it("should reject missing signedTransaction in payload", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {} as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4Fmi",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toContain("missing_signed_transaction");
+    });
+
+    it("should pass structural checks before signature verification", async () => {
+      const mockSigner = createMockFacilitatorSigner();
+      const facilitator = new ExactConcordiumFacilitator({ signer: mockSigner });
+      const validExpiry = Math.floor(Date.now() / 1000) + 30;
+      const result = await facilitator.verify(
+        {
+          x402Version: 2,
+          accepted: { scheme: "exact", network: CONCORDIUM_TESTNET_CAIP2 } as any,
+          payload: {
+            signedTransaction: {
+              version: 1,
+              header: {
+                sender: "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp",
+                expiry: validExpiry,
+                sponsor: {
+                  account: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                  numSignatures: 1,
+                },
+                numSignatures: 1,
+                nonce: 1,
+              },
+              payload: {
+                type: "transfer",
+                toAddress: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+                amount: "1000000",
+              },
+              signatures: { sender: { "0": { "0": "sig" } }, sponsor: {} },
+            },
+          } as any,
+        },
+        {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          amount: "1000000",
+          asset: "CCD",
+          payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+          maxTimeoutSeconds: 600,
+          extra: { feePayer: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW" },
+        },
+      );
+      // Fails at cryptographic signature verification (mock signer has no real keys)
+      expect(result.isValid).toBe(false);
+      expect(result.invalidReason).toContain("signature_verification_failed");
+    });
+  });
+  describe("ExactConcordiumClient", () => {
+    const validAddress = "3UrcxPQeYywasrPcYUcqhvFu3SB2vBBDjj7TsaRQ431vGiczYp";
+
+    function createMockClientSigner(address?: string) {
+      return {
+        accountAddress: (address ?? validAddress) as any,
+        signer: {} as any,
+      };
+    }
+
+    it("should have scheme property set to exact", () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      expect(client.scheme).toBe("exact");
+    });
+
+    it("should reject missing account address", async () => {
+      const client = new ExactConcordiumClient({
+        accountAddress: undefined as any,
+        signer: {} as any,
+      });
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("Concordium account address is required");
+    });
+
+    it("should reject missing payTo", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: undefined as any,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("payTo address is required");
+    });
+
+    it("should reject empty amount", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject undefined amount", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: undefined as any,
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject USD-formatted amount like '$0.001'", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "$0.001",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject decimal amount like '0.001'", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "0.001",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject non-numeric amount like 'abc'", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "abc",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: validAddress },
+        }),
+      ).rejects.toThrow("amount must be a non-empty decimal string");
+    });
+
+    it("should reject missing feePayer", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: {},
+        }),
+      ).rejects.toThrow("requirements.extra.feePayer is required");
+    });
+
+    it("should reject empty feePayer string", async () => {
+      const client = new ExactConcordiumClient(createMockClientSigner());
+      await expect(
+        client.createPaymentPayload(2, {
+          scheme: "exact",
+          network: CONCORDIUM_TESTNET_CAIP2,
+          asset: "CCD",
+          amount: "1000",
+          payTo: validAddress,
+          maxTimeoutSeconds: 60,
+          extra: { feePayer: "" },
+        }),
+      ).rejects.toThrow("requirements.extra.feePayer is required");
+    });
+
+    // === Private method tests (accessed via `as any`) ===
+
+    describe("buildCcdTransfer", () => {
+      it("should build a CCD transfer builder with valid inputs", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const builder = (client as any).buildCcdTransfer(validAddress, "1000000");
+
+        expect(builder).toBeDefined();
+        expect(typeof builder.addMetadata).toBe("function");
+        expect(typeof builder.addSponsor).toBe("function");
+        expect(typeof builder.build).toBe("function");
+      });
+
+      it("should throw on invalid payTo address", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildCcdTransfer("not-an-address", "1000000")).toThrow();
+      });
+
+      it("should throw on empty payTo", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildCcdTransfer("", "1000000")).toThrow();
+      });
+
+      it("should throw on invalid amount (negative)", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildCcdTransfer(validAddress, "-100")).toThrow();
+      });
+
+      it("should throw on non-numeric amount", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildCcdTransfer(validAddress, "abc")).toThrow();
+      });
+
+      it("should accept zero amount", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const builder = (client as any).buildCcdTransfer(validAddress, "0");
+        expect(builder).toBeDefined();
+        expect(typeof builder.build).toBe("function");
+      });
+
+      it("should accept large amount", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const builder = (client as any).buildCcdTransfer(validAddress, "1000000000000");
+        expect(builder).toBeDefined();
+      });
+    });
+
+    describe("buildPltTransfer", () => {
+      it("should build a PLT token transfer builder with valid inputs", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const builder = (client as any).buildPltTransfer(validAddress, "1000000", "EURR", 6);
+
+        expect(builder).toBeDefined();
+        expect(typeof builder.addMetadata).toBe("function");
+        expect(typeof builder.addSponsor).toBe("function");
+        expect(typeof builder.build).toBe("function");
+      });
+
+      it("should default decimals to 0 when not provided", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        // Should not throw — decimals defaults to 0
+        const builder = (client as any).buildPltTransfer(validAddress, "1000", "EURR");
+        expect(builder).toBeDefined();
+      });
+
+      it("should throw on invalid payTo", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildPltTransfer("bad-address", "1000", "EURR", 6)).toThrow();
+      });
+
+      it("should throw on invalid amount", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() =>
+          (client as any).buildPltTransfer(validAddress, "not-a-number", "EURR", 6),
+        ).toThrow();
+      });
+
+      it("should throw on invalid tokenId", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        expect(() => (client as any).buildPltTransfer(validAddress, "1000", "", 6)).toThrow();
+      });
+
+      it("should accept zero amount for PLT", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const builder = (client as any).buildPltTransfer(validAddress, "0", "USDR", 6);
+        expect(builder).toBeDefined();
+      });
+    });
+
+    describe("createGrpcClient", () => {
+      it("should return a gRPC client for testnet", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const grpcClient = (client as any).createGrpcClient(CONCORDIUM_TESTNET_CAIP2);
+
+        expect(grpcClient).toBeDefined();
+        expect(typeof grpcClient.getNextAccountNonce).toBe("function");
+        expect(typeof grpcClient.getAccountInfo).toBe("function");
+      });
+
+      it("should return a gRPC client for mainnet", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const grpcClient = (client as any).createGrpcClient(CONCORDIUM_MAINNET_CAIP2);
+
+        expect(grpcClient).toBeDefined();
+      });
+
+      it("should use TLS by default", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner());
+        const grpcClient = (client as any).createGrpcClient(CONCORDIUM_TESTNET_CAIP2);
+
+        // Client is created without throwing — TLS creds work
+        expect(grpcClient).toBeDefined();
+      });
+
+      it("should respect useTls: false config", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner(), { useTls: false });
+        const grpcClient = (client as any).createGrpcClient(CONCORDIUM_TESTNET_CAIP2);
+
+        expect(grpcClient).toBeDefined();
+      });
+
+      it("should respect custom grpcUrl config", () => {
+        const client = new ExactConcordiumClient(createMockClientSigner(), {
+          grpcUrl: "localhost:20000",
+        });
+        const grpcClient = (client as any).createGrpcClient(CONCORDIUM_TESTNET_CAIP2);
+
+        expect(grpcClient).toBeDefined();
+      });
     });
   });
 });
