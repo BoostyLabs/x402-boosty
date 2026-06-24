@@ -381,7 +381,7 @@ describe("Concordium Integration Tests", () => {
         accepts: {
           scheme: "exact",
           payTo: PAY_TO_ADDRESS!,
-          price: "1", // 1 CCD
+          price: { amount: "1000000", asset: "CCD" }, // 1 CCD in microCCD
           network: CONCORDIUM_TESTNET_CAIP2 as Network,
         },
         description: "Access to protected API",
@@ -508,37 +508,37 @@ describe("Concordium Integration Tests", () => {
       server = new x402ResourceServer(facilitatorClientWrapper);
 
       concordiumServer = new ExactConcordiumServer();
-      concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
-      concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "USDR", 6);
       server.register(CONCORDIUM_TESTNET_CAIP2, concordiumServer);
       await server.initialize();
     });
 
-    it("should parse CCD Money formats and build payment requirements", async () => {
-      const testCases = [
-        { input: "10", expectedAmount: "10000000" }, // 10 CCD
-        { input: "1.5", expectedAmount: "1500000" }, // 1.5 CCD
-        { input: 2.5, expectedAmount: "2500000" }, // 2.5 CCD
-        { input: "0.000001", expectedAmount: "1" }, // 1 microCCD
-      ];
-
-      for (const testCase of testCases) {
-        const requirements = await server.buildPaymentRequirements({
+    it("should throw on raw numbers without a registered money parser", async () => {
+      await expect(
+        server.buildPaymentRequirements({
           scheme: "exact",
           payTo: PAY_TO_ADDRESS!,
-          price: testCase.input,
+          price: "10",
           network: CONCORDIUM_TESTNET_CAIP2 as Network,
-        });
-
-        expect(requirements).toHaveLength(1);
-        expect(requirements[0].amount).toBe(testCase.expectedAmount);
-        expect(requirements[0].asset).toBe("CCD"); // native CCD
-      }
+        }),
+      ).rejects.toThrow("Cannot resolve price");
     });
 
-    it("should handle AssetAmount pass-through for PLT tokens", async () => {
+    it("should pass through AssetAmount for CCD in atomic units", async () => {
+      const requirements = await server.buildPaymentRequirements({
+        scheme: "exact",
+        payTo: PAY_TO_ADDRESS!,
+        price: { amount: "1000000", asset: "CCD" },
+        network: CONCORDIUM_TESTNET_CAIP2 as Network,
+      });
+
+      expect(requirements).toHaveLength(1);
+      expect(requirements[0].amount).toBe("1000000");
+      expect(requirements[0].asset).toBe("CCD");
+    });
+
+    it("should pass through AssetAmount for PLT tokens in atomic units", async () => {
       const customAsset = {
-        amount: "5",
+        amount: "500",
         asset: "EURR",
         extra: { foo: "bar" },
       };
@@ -551,8 +551,7 @@ describe("Concordium Integration Tests", () => {
       });
 
       expect(requirements).toHaveLength(1);
-      // parseAssetAmount converts whole units to atomic units: 5 EURR × 10^6 = 5000000
-      expect(requirements[0].amount).toBe("5000000");
+      expect(requirements[0].amount).toBe("500");
       expect(requirements[0].asset).toBe("EURR");
       expect(requirements[0].extra?.foo).toBe("bar");
     });
@@ -565,16 +564,16 @@ describe("Concordium Integration Tests", () => {
           price: "$0.001",
           network: CONCORDIUM_TESTNET_CAIP2 as Network,
         }),
-      ).rejects.toThrow("Cannot resolve USD-denominated price");
+      ).rejects.toThrow("Cannot resolve price");
     });
 
     it("should use registerMoneyParser for custom conversion", async () => {
       concordiumServer.registerMoneyParser(async (amount, _network) => {
         if (amount > 100) {
           return {
-            amount: amount.toString(),
+            amount: String(Math.round(amount * 1e6)),
             asset: "EURR",
-            extra: { tier: "large", symbol: "EURR", decimals: 6 },
+            extra: { tier: "large" },
           };
         }
         return null;
@@ -587,19 +586,19 @@ describe("Concordium Integration Tests", () => {
         network: CONCORDIUM_TESTNET_CAIP2 as Network,
       });
 
-      expect(largeRequirements[0].amount).toBe("150");
+      expect(largeRequirements[0].amount).toBe("150000000");
       expect(largeRequirements[0].asset).toBe("EURR");
       expect(largeRequirements[0].extra?.tier).toBe("large");
 
-      const smallRequirements = await server.buildPaymentRequirements({
-        scheme: "exact",
-        payTo: PAY_TO_ADDRESS!,
-        price: 50,
-        network: CONCORDIUM_TESTNET_CAIP2 as Network,
-      });
-
-      expect(smallRequirements[0].amount).toBe("50000000"); // 50 * 1e6 (CCD)
-      expect(smallRequirements[0].asset).toBe("CCD");
+      // Small amount falls through all parsers — throws, no silent CCD fallback
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: 50,
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Cannot resolve price");
     });
 
     it("should support multiple MoneyParser in chain", async () => {
@@ -607,7 +606,7 @@ describe("Concordium Integration Tests", () => {
         .registerMoneyParser(async amount => {
           if (amount > 1000) {
             return {
-              amount: amount.toString(),
+              amount: String(Math.round(amount * 1e6)),
               asset: "EURR",
               extra: { tier: "vip" },
             };
@@ -617,9 +616,9 @@ describe("Concordium Integration Tests", () => {
         .registerMoneyParser(async amount => {
           if (amount > 100) {
             return {
-              amount: (amount * 1e6).toString(),
-              asset: "",
-              extra: { tier: "premium", type: "native", symbol: "CCD", decimals: 6 },
+              amount: String(Math.round(amount * 1e6)),
+              asset: "USDR",
+              extra: { tier: "premium" },
             };
           }
           return null;
@@ -641,36 +640,28 @@ describe("Concordium Integration Tests", () => {
         network: CONCORDIUM_TESTNET_CAIP2 as Network,
       });
       expect(premiumReq[0].extra?.tier).toBe("premium");
-      expect(premiumReq[0].asset).toBe(""); // custom parser returns empty for native-like CCD
+      expect(premiumReq[0].asset).toBe("USDR");
 
-      const standardReq = await server.buildPaymentRequirements({
-        scheme: "exact",
-        payTo: PAY_TO_ADDRESS!,
-        price: 50,
-        network: CONCORDIUM_TESTNET_CAIP2 as Network,
-      });
-      expect(standardReq[0].asset).toBe("CCD");
-      expect(standardReq[0].amount).toBe("50000000");
-    });
-
-    it("should avoid floating-point rounding error", async () => {
-      const testCases = [
-        { input: "4.02", expectedAmount: "4020000" },
-        { input: 4.02, expectedAmount: "4020000" },
-      ];
-
-      for (const testCase of testCases) {
-        const requirements = await server.buildPaymentRequirements({
+      // Unmatched amount falls through all parsers — throws
+      await expect(
+        server.buildPaymentRequirements({
           scheme: "exact",
           payTo: PAY_TO_ADDRESS!,
-          price: testCase.input,
+          price: 50,
           network: CONCORDIUM_TESTNET_CAIP2 as Network,
-        });
+        }),
+      ).rejects.toThrow("Cannot resolve price");
+    });
 
-        expect(requirements).toHaveLength(1);
-        expect(requirements[0].amount).toBe(testCase.expectedAmount);
-        expect(requirements[0].asset).toBe("CCD"); // raw numbers treated as CCD amounts
-      }
+    it("should throw on floating-point numbers without money parser", async () => {
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: 4.02,
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Cannot resolve price");
     });
   });
 
@@ -1078,7 +1069,6 @@ describe("Concordium Integration Tests", () => {
       facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
       server = new x402ResourceServer(facilitatorClient);
       const concordiumServer = new ExactConcordiumServer();
-      concordiumServer.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
       server.register(CONCORDIUM_TESTNET_CAIP2, concordiumServer);
       await server.initialize();
     });
@@ -1167,15 +1157,9 @@ describe("Concordium Integration Tests", () => {
         mimeType: "application/json",
       };
       const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
-      const paymentPayload = await client.createPaymentPayload(paymentRequired);
-      expect(paymentPayload).toBeDefined();
 
-      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
-      expect(accepted).toBeDefined();
-
-      // Token does not exist on chain — settlement must fail
-      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
-      expect(settleResponse.success).toBe(false);
+      // Token does not exist on chain — client fails to fetch token decimals from gRPC
+      await expect(client.createPaymentPayload(paymentRequired)).rejects.toThrow();
     }, 15_000);
 
     it("should handle duplicate asset entries in requirements", async () => {

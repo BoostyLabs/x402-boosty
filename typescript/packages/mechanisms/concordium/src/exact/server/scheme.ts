@@ -1,4 +1,4 @@
-import {
+import type {
   AssetAmount,
   Network,
   PaymentRequirements,
@@ -6,75 +6,43 @@ import {
   SchemeNetworkServer,
   MoneyParser,
 } from "@x402/core/types";
-import { convertToTokenAmount, parseMoneyString } from "@x402/core/utils";
-
-/**
- * Concordium asset information
- */
-export type AssetType = "native" | "plt";
-
-export interface ConcordiumAssetInfo {
-  type: AssetType;
-  symbol: string;
-  decimals: number;
-}
-
-/**
- * Native CCD asset
- */
-export const CCD_NATIVE: ConcordiumAssetInfo = {
-  type: "native",
-  symbol: "CCD",
-  decimals: 6,
-};
+import { parseMoneyString } from "@x402/core/utils";
 
 /**
  * Concordium server scheme for exact payments.
  *
  * Supports:
- * - Native CCD (type: "native")
- * - PLT tokens (type: "plt")
+ * - Native CCD via explicit AssetAmount: { amount: "1000", asset: "CCD" }
+ * - PLT tokens via explicit AssetAmount: { amount: "100", asset: "<token-id>" }
+ * - Money (string/number) only when a money parser is registered
+ *
+ * There is no default asset fallback — raw numbers and USD strings
+ * will throw unless a money parser is registered via {@link registerMoneyParser}.
  */
 export class ExactConcordiumScheme implements SchemeNetworkServer {
   readonly scheme = "exact";
 
-  /** Registered assets: Map<"network:SYMBOL", AssetInfo> */
-  private assets = new Map<string, ConcordiumAssetInfo>();
-
-  /** Custom money parser chain — tried in registration order before default */
+  /** Custom money parser chain — tried in registration order */
   private moneyParsers: MoneyParser[] = [];
-
-  /**
-   * Register an asset for a network.
-   *
-   * @param network - Network identifier (e.g., "ccd:9dd9ca4d..." or "ccd:*")
-   * @param symbol - Asset symbol (e.g., "EURR", "USDC")
-   * @param decimals - Number of decimal places
-   * @returns This instance for chaining
-   * @example
-   * ```TypeScript
-   * scheme.registerAsset('ccd:9dd9ca4d19e9393877d2c44b70f89acb', 'EURR', 6);
-   * ```
-   */
-  registerAsset(network: Network, symbol: string, decimals: number): this {
-    const asset: ConcordiumAssetInfo = {
-      type: "plt",
-      symbol: symbol.toUpperCase(),
-      decimals,
-    };
-    this.assets.set(this.assetKey(network, symbol), asset);
-    return this;
-  }
 
   /**
    * Registers a custom money parser in the parser chain.
    *
    * Parsers are tried in registration order. Return `null` to skip to the
-   * next parser. The built-in CCD conversion is always the final fallback.
+   * next parser. There is no default fallback — if all parsers return null,
+   * {@link parsePrice} throws.
    *
    * @param parser - Custom function returning AssetAmount or null
+   * @returns This instance for chaining
    *
-   * @returns ExactConcordiumScheme instance
+   * @example
+   * ```typescript
+   * scheme.registerMoneyParser(async (amount, network) => ({
+   *   amount: String(Math.round(amount * 1e6)),
+   *   asset: "EURR",
+   *   extra: {},
+   * }));
+   * ```
    */
   registerMoneyParser(parser: MoneyParser): this {
     this.moneyParsers.push(parser);
@@ -82,67 +50,31 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   }
 
   /**
-   * Get registered asset.
-   *
-   * @param network - Network identifier
-   * @param symbol - Asset symbol
-   * @returns Asset info or undefined if not found
-   */
-  getAsset(network: Network, symbol: string): ConcordiumAssetInfo | undefined {
-    const exact = this.assets.get(this.assetKey(network, symbol));
-    if (exact) return exact;
-
-    return this.assets.get(this.assetKey("ccd:*", symbol));
-  }
-
-  /**
-   * Get all supported assets for a network.
-   * Always includes native CCD.
-   *
-   * @param network - Network identifier
-   * @returns Array of supported assets
-   */
-  getSupportedAssets(network: Network): ConcordiumAssetInfo[] {
-    const assets: ConcordiumAssetInfo[] = [CCD_NATIVE];
-
-    for (const [key, asset] of this.assets.entries()) {
-      if (key.startsWith(`${network}:`) || key.startsWith("ccd:*:")) {
-        if (!assets.some(a => a.symbol === asset.symbol)) {
-          assets.push(asset);
-        }
-      }
-    }
-
-    return assets;
-  }
-
-  /**
-   * Get supported asset symbols for a network.
-   * Always includes "CCD".
-   *
-   * @param network - Network identifier
-   * @returns Array of supported symbols
-   */
-  getSupportedSymbols(network: Network): string[] {
-    return this.getSupportedAssets(network).map(a => a.symbol);
-  }
-
-  /**
    * Parse price into AssetAmount.
    *
-   * Supports:
-   * - String/number: "10" or 10 -> CCD with decimals
-   * - AssetAmount: { amount: "10", asset: "EURR" } -> PLT without decimals
+   * - **AssetAmount**: passed through in atomic units. The `asset` field is
+   *   required — throws if missing.
+   * - **Money** (string | number): tries registered money parsers in order.
+   *   Throws if no parser matches — there is no silent CCD fallback.
    *
    * @param price - Price to parse
    * @param network - Network identifier
-   * @returns Parsed asset amount
+   * @returns Parsed asset amount in atomic units
    */
   async parsePrice(price: Price, network: Network): Promise<AssetAmount> {
-    if (this.isAssetAmount(price)) {
-      return this.parseAssetAmount(price, network);
+    // AssetAmount: pass-through atomic units, asset required
+    if (typeof price === "object" && price !== null && "amount" in price) {
+      if (!price.asset) {
+        throw new Error(`Asset must be specified for AssetAmount on network ${network}`);
+      }
+      return {
+        amount: price.amount,
+        asset: price.asset,
+        extra: price.extra ?? {},
+      };
     }
 
+    // Money: parse to decimal, try registered parsers
     const amount = this.parseMoneyToDecimal(price);
 
     for (const parser of this.moneyParsers) {
@@ -150,37 +82,27 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
       if (result !== null) return result;
     }
 
-    // USD-denominated prices ($ prefix) require a registered money parser
-    // because CCD is not a USD stablecoin. Raw numbers are treated as CCD amounts.
-    if (typeof price === "string" && price.startsWith("$")) {
-      throw new Error(
-        `Cannot resolve USD-denominated price to a Concordium asset. ` +
-          `Register a money parser via registerMoneyParser() to map USD prices ` +
-          `to a specific token (e.g., EURR, USDR). Raw amount: ${amount}`,
-      );
-    }
-
-    // Treat raw numbers/non-USD strings as CCD amounts
-    const tokenAmount = convertToTokenAmount(
-      typeof price === "number" ? price.toString() : (price as string),
-      CCD_NATIVE.decimals,
+    // No parser matched — throw, no silent CCD fallback
+    throw new Error(
+      `Cannot resolve price "${String(price)}" to a Concordium asset. ` +
+        `Register a money parser via registerMoneyParser() to map prices ` +
+        `to a specific token (e.g., EURR, USDR).`,
     );
-    return {
-      amount: tokenAmount,
-      asset: "CCD",
-      extra: {},
-    };
   }
 
   /**
    * Enhance payment requirements with facilitator-announced fee payer metadata.
+   *
+   * The facilitator provides its address as the fee payer for transaction fees
+   * via `supportedKind.extra.feePayer`. This method injects that into the
+   * payment requirements so the client knows who will sponsor gas.
    *
    * @param requirements - Payment requirements to enhance
    * @param supportedKind - Supported payment kind configuration
    * @param supportedKind.x402Version - X402 protocol version
    * @param supportedKind.scheme - Payment scheme identifier
    * @param supportedKind.network - Network identifier
-   * @param supportedKind.extra - Extra facilitator metadata
+   * @param supportedKind.extra - Extra facilitator metadata (includes feePayer)
    * @param _ - Extension keys to apply (unused)
    * @returns Enhanced payment requirements
    */
@@ -204,88 +126,13 @@ export class ExactConcordiumScheme implements SchemeNetworkServer {
   }
 
   /**
-   * Parse custom asset amount.
-   *
-   * @param price - Asset amount to parse
-   * @param network - Network identifier
-   * @returns Parsed asset amount
-   */
-  private parseAssetAmount(price: AssetAmount, network: Network): AssetAmount {
-    const assetSymbol = price.asset || "";
-
-    if (!assetSymbol || assetSymbol.toUpperCase() === "CCD") {
-      const amount = convertToTokenAmount(String(price.amount), CCD_NATIVE.decimals);
-      return {
-        amount,
-        asset: "CCD",
-        extra: price.extra,
-      };
-    }
-
-    const asset = this.getAsset(network, assetSymbol);
-    if (!asset) {
-      throw new Error(`Unknown asset: ${assetSymbol}`);
-    }
-
-    return {
-      amount: convertToTokenAmount(String(price.amount), asset.decimals),
-      asset: asset.symbol,
-      extra: {
-        ...((price.extra as Record<string, unknown>) ?? {}),
-        decimals: asset.decimals,
-      },
-    };
-  }
-
-  /**
-   * Creates a unique key for asset lookup.
-   *
-   * @param network - Network identifier
-   * @param symbol - Asset symbol
-   * @returns Asset key string
-   */
-  private assetKey(network: Network, symbol: string): string {
-    return `${network}:${symbol.toUpperCase()}`;
-  }
-
-  /**
-   * Convert to whole units (for PLT).
-   *
-   * @param amount - Amount to convert
-   * @returns Whole units as string
-   * @example
-   * toWholeUnits("10.5") // "10"
-   */
-  private toWholeUnits(amount: string | number): string {
-    const str = String(amount).trim();
-
-    if (!/^\d+(\.\d+)?$/.test(str)) {
-      throw new Error(`Invalid amount: ${amount}`);
-    }
-
-    const [whole] = str.split(".");
-    return whole.replace(/^0+/, "") || "0";
-  }
-
-  /**
    * Parses Money (string | number) to a plain decimal number.
-   * Strips leading `$` if present.
    *
    * @param money - Raw price to parse
-   * @returns formatted decimal number
+   * @returns Decimal number
    */
   private parseMoneyToDecimal(money: string | number): number {
     if (typeof money === "number") return money;
     return parseMoneyString(money);
-  }
-
-  /**
-   * Type guard to check if price is an AssetAmount.
-   *
-   * @param price - Price to check
-   * @returns True if price is an AssetAmount
-   */
-  private isAssetAmount(price: Price): price is AssetAmount {
-    return typeof price === "object" && price !== null && "amount" in price;
   }
 }

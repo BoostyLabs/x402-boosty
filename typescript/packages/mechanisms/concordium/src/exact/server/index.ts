@@ -1,2 +1,1 @@
-export { ExactConcordiumScheme, CCD_NATIVE } from "./scheme";
-export type { ConcordiumAssetInfo, AssetType } from "./scheme";
+export { ExactConcordiumScheme } from "./scheme";

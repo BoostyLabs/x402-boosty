@@ -9,6 +9,7 @@ import {
   TokenOperationType,
   Cbor,
 } from "@concordium/web-sdk";
+import type { SequenceNumber } from "@concordium/web-sdk/types";
 import { Transaction } from "@concordium/web-sdk/transactions";
 import type {
   PaymentPayload,
@@ -72,6 +73,9 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
    * sender, and returns the serialized payload ready to attach to a
    * `PaymentPayload`.
    *
+   * For PLT token transfers, token decimals are fetched from the Concordium
+   * gRPC node via `getTokenInfo` rather than trusting server-provided metadata.
+   *
    * @param x402Version       - Must be 2
    * @param requirements      - Payment requirements from the resource server,
    *                            must include `extra.feePayer`
@@ -129,17 +133,14 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
           .addMetadata(metadata)
           .addSponsor(sponsorAccountAddress)
           .build()
-      : this.buildPltTransfer(
+      : await this.buildPltTransferWithChainDecimals(
+          grpcClient,
           requirements.payTo,
           requirements.amount,
           requirements.asset,
-          (requirements.extra as Record<string, unknown> | undefined)?.decimals as
-            | number
-            | undefined,
-        )
-          .addMetadata(metadata)
-          .addSponsor(sponsorAccountAddress)
-          .build();
+          metadata,
+          sponsorAccountAddress,
+        );
 
     const signed = await Transaction.sign(signable as Transaction.Signable, this.signer.signer);
 
@@ -155,6 +156,46 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
       x402Version,
       payload: concordiumPayload as unknown as PaymentPayload["payload"],
     };
+  }
+
+  /**
+   * Builds a PLT token transfer, fetching decimals from the chain first.
+   *
+   * Token decimals are fetched from the Concordium gRPC node via `getTokenInfo`
+   * rather than trusting server-provided metadata. This prevents a malicious
+   * server from understating decimals to make prices appear cheaper.
+   *
+   * @param grpcClient - Active gRPC client for the target network
+   * @param payTo - Recipient address (base58check)
+   * @param amount - Transfer amount in smallest token units (string)
+   * @param asset - Token identifier (e.g. "EURR")
+   * @param metadata - Transaction metadata
+   * @param metadata.sender - Sender account address
+   * @param metadata.nonce - Account sequence number
+   * @param metadata.expiry - Transaction expiry
+   * @param sponsor - Sponsor account address
+   * @returns A built (unsigned) transaction ready for signing
+   */
+  private async buildPltTransferWithChainDecimals(
+    grpcClient: ConcordiumGRPCNodeClient,
+    payTo: string,
+    amount: string,
+    asset: string,
+    metadata: {
+      sender: AccountAddress.Type;
+      nonce: SequenceNumber.Type;
+      expiry: TransactionExpiry.Type;
+    },
+    sponsor: AccountAddress.Type,
+  ) {
+    const tokenId = TokenId.fromString(asset);
+    const tokenInfo = await grpcClient.getTokenInfo(tokenId);
+    const decimals = tokenInfo.state.decimals;
+
+    return this.buildPltTransfer(payTo, amount, asset, decimals)
+      .addMetadata(metadata)
+      .addSponsor(sponsor)
+      .build();
   }
 
   /**
@@ -177,18 +218,17 @@ export class ExactConcordiumScheme implements SchemeNetworkClient {
   /**
    * Builds a PLT token transfer via `Transaction.tokenUpdate`.
    *
-   * @param payTo   - Recipient address (base58check)
-   * @param amount  - Transfer amount in smallest token units (string)
-   * @param tokenId - Token identifier (e.g. "EURR")
+   * @param payTo    - Recipient address (base58check)
+   * @param amount   - Transfer amount in smallest token units (string)
+   * @param tokenId  - Token identifier (e.g. "EURR")
    * @param decimals - Number of decimal places for the token (e.g. 6 for EURR)
    * @returns A transaction builder for a PLT token transfer
    */
-  private buildPltTransfer(payTo: string, amount: string, tokenId: string, decimals?: number) {
-    const tokenDecimals = decimals ?? 0;
+  private buildPltTransfer(payTo: string, amount: string, tokenId: string, decimals: number) {
     const ops = [
       {
         [TokenOperationType.Transfer]: {
-          amount: TokenAmount.create(BigInt(amount), tokenDecimals),
+          amount: TokenAmount.create(BigInt(amount), decimals),
           recipient: CborAccountAddress.fromAccountAddress(AccountAddress.fromBase58(payTo)),
           memo: undefined,
         },

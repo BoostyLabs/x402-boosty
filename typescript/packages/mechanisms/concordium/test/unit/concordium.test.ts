@@ -104,83 +104,72 @@ describe("@x402/concordium", () => {
       expect(enhanced.extra?.feePayer).toBeUndefined();
     });
 
-    it("should register and retrieve PLT assets", () => {
+    it("should pass through AssetAmount in atomic units (CCD)", async () => {
       const server = new ExactConcordiumServer();
-      server.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
-
-      const asset = server.getAsset(CONCORDIUM_TESTNET_CAIP2, "EURR");
-      expect(asset).toBeDefined();
-      expect(asset?.symbol).toBe("EURR");
-      expect(asset?.type).toBe("plt");
-      expect(asset?.decimals).toBe(6);
-    });
-
-    it("should always include CCD in supported assets", () => {
-      const server = new ExactConcordiumServer();
-      const assets = server.getSupportedAssets(CONCORDIUM_TESTNET_CAIP2);
-
-      expect(assets).toHaveLength(1);
-      expect(assets[0].symbol).toBe("CCD");
-      expect(assets[0].type).toBe("native");
-    });
-
-    it("should parse CCD price to microCCD", async () => {
-      const server = new ExactConcordiumServer();
-      const result = await server.parsePrice("10", CONCORDIUM_TESTNET_CAIP2);
-
-      expect(result.amount).toBe("10000000");
-      expect(result.asset).toBe("CCD");
-    });
-
-    it("should parse fractional CCD price", async () => {
-      const server = new ExactConcordiumServer();
-      const result = await server.parsePrice("10.5", CONCORDIUM_TESTNET_CAIP2);
-
-      expect(result.amount).toBe("10500000");
-      expect(result.asset).toBe("CCD");
-    });
-
-    it("should parse PLT asset amount", async () => {
-      const server = new ExactConcordiumServer();
-      server.registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6);
-
       const result = await server.parsePrice(
-        { amount: "5", asset: "EURR" },
+        { amount: "1000000", asset: "CCD" },
         CONCORDIUM_TESTNET_CAIP2,
       );
 
-      expect(result.amount).toBe("5000000");
+      expect(result.amount).toBe("1000000");
+      expect(result.asset).toBe("CCD");
+    });
+
+    it("should pass through AssetAmount in atomic units (PLT)", async () => {
+      const server = new ExactConcordiumServer();
+      const result = await server.parsePrice(
+        { amount: "500", asset: "EURR" },
+        CONCORDIUM_TESTNET_CAIP2,
+      );
+
+      expect(result.amount).toBe("500");
       expect(result.asset).toBe("EURR");
+    });
+
+    it("should throw when AssetAmount has no asset field", async () => {
+      const server = new ExactConcordiumServer();
+      await expect(
+        server.parsePrice({ amount: "100" } as any, CONCORDIUM_TESTNET_CAIP2),
+      ).rejects.toThrow("Asset must be specified");
+    });
+
+    it("should throw when raw number has no registered money parser", async () => {
+      const server = new ExactConcordiumServer();
+      await expect(server.parsePrice("10", CONCORDIUM_TESTNET_CAIP2)).rejects.toThrow(
+        "Cannot resolve price",
+      );
     });
 
     it("should throw when USD price has no registered money parser", async () => {
       const server = new ExactConcordiumServer();
       await expect(server.parsePrice("$0.001", CONCORDIUM_TESTNET_CAIP2)).rejects.toThrow(
-        "Cannot resolve USD-denominated price",
+        "Cannot resolve price",
       );
     });
 
     it("should allow USD prices when a money parser is registered", async () => {
       const server = new ExactConcordiumServer();
-      server
-        .registerAsset(CONCORDIUM_TESTNET_CAIP2, "EURR", 6)
-        .registerMoneyParser(async amount => ({
-          amount: amount.toString(),
-          asset: "EURR",
-          extra: { type: "plt", symbol: "EURR", decimals: 6 },
-        }));
+      server.registerMoneyParser(async amount => ({
+        amount: String(Math.round(amount * 1e6)),
+        asset: "EURR",
+        extra: {},
+      }));
 
       const result = await server.parsePrice("$10", CONCORDIUM_TESTNET_CAIP2);
 
-      expect(result.amount).toBe("10");
+      expect(result.amount).toBe("10000000");
       expect(result.asset).toBe("EURR");
     });
 
-    it("should reject unknown assets", async () => {
+    it("should pass through any AssetAmount without asset validation", async () => {
       const server = new ExactConcordiumServer();
-      await expect(
-        server.parsePrice({ amount: "1", asset: "UNKNOWN" }, CONCORDIUM_TESTNET_CAIP2),
-      ).rejects.toThrow("Unknown asset");
+      const result = await server.parsePrice(
+        { amount: "1", asset: "UNKNOWN" },
+        CONCORDIUM_TESTNET_CAIP2,
+      );
+
+      expect(result.amount).toBe("1");
+      expect(result.asset).toBe("UNKNOWN");
     });
   });
 
@@ -1387,13 +1376,6 @@ describe("@x402/concordium", () => {
         expect(typeof builder.addMetadata).toBe("function");
         expect(typeof builder.addSponsor).toBe("function");
         expect(typeof builder.build).toBe("function");
-      });
-
-      it("should default decimals to 0 when not provided", () => {
-        const client = new ExactConcordiumClient(createMockClientSigner());
-        // Should not throw — decimals defaults to 0
-        const builder = (client as any).buildPltTransfer(validAddress, "1000", "EURR");
-        expect(builder).toBeDefined();
       });
 
       it("should throw on invalid payTo", () => {
