@@ -34,7 +34,7 @@ The client never broadcasts — the facilitator handles submission after sponsor
 | Type | Symbol | Description | Decimals |
 |------|--------|-------------|----------|
 | Native | CCD | Native Concordium token | 6 |
-| PLT | EURR, USDR, etc. | PLT standard tokens | 6 |
+| PLT | EURR, USDR, etc. | PLT standard tokens | Token-dependent (fetched from chain) |
 
 ## Testnet Faucets
 
@@ -95,37 +95,47 @@ const scheme = new ExactConcordiumScheme(signer, {
 
 ### 2. Server Setup
 
-The server registers assets and builds `PaymentRequirements`. The facilitator announces the active `feePayer` in `/supported`, and the server copies it into `requirements.extra.feePayer` during `enhancePaymentRequirements()`.
+The server builds `PaymentRequirements` from route configuration. The facilitator announces the active `feePayer` in `/supported`, and the server copies it into `requirements.extra.feePayer` during `enhancePaymentRequirements()`.
 
 ```typescript
 import { ExactConcordiumScheme } from "@x402/concordium/exact/server";
 
 const scheme = new ExactConcordiumScheme();
 
-// Register PLT tokens (native CCD works by default)
-scheme
-  .registerAsset("ccd:*", "EURR", 6)
-  .registerAsset("ccd:*", "USDR", 6);
-
 // Route configuration examples:
 
-// Native CCD payment
+// Native CCD payment — use AssetAmount with atomic units
 const ccdRoute = {
   scheme: "exact",
   network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
   payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-  price: "10",  // 10 CCD → converted to "10000000" microCCD
+  price: { amount: "10000000", asset: "CCD" },  // 10 CCD in microCCD
   description: "Premium content",
   mimeType: "application/json",
 };
 
-// PLT token payment
+// PLT token payment — use AssetAmount with token symbol
 const pltRoute = {
   scheme: "exact",
   network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
   payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
-  price: { amount: "1", asset: "EURR" },  // 1 EURR
-  description: "Premium content - 1 EURR",
+  price: { amount: "5000000", asset: "EURR" },  // 5 EURR in atomic units
+  description: "Premium content - 5 EURR",
+  mimeType: "application/json",
+};
+
+// USD-style prices — register a money parser to map "$0.01" to a token
+scheme.registerMoneyParser(async (amount, network) => ({
+  amount: String(Math.round(amount * 1e6)),
+  asset: "EURR",
+  extra: {},
+}));
+const usdRoute = {
+  scheme: "exact",
+  network: "ccd:9dd9ca4d19e9393877d2c44b70f89acb",
+  payTo: "4FmiTW2L4RvCsSVTjFAavYvrgnPLGNj43eiwPYmbhNqtAcMbWW",
+  price: "$0.01",  // Parsed by registerMoneyParser → 0.01 EURR
+  description: "Premium content",
   mimeType: "application/json",
 };
 ```
@@ -293,7 +303,7 @@ The `signatures.sender` is populated by the client. The facilitator adds `signat
 | Mainnet | `ccd:9dd9ca4d19e9393877d2c44b70f89acb` | `grpc.mainnet.concordium.software:20000` |
 | Testnet | `ccd:4221332d34e1694168c2a0c0b3fd0f27` | `grpc.testnet.concordium.com:20000` |
 
-Wildcard `ccd:*` can be used for asset registration that applies to all networks.
+Wildcard `ccd:*` matches all Concordium networks for client and facilitator registration.
 
 ## Constants
 
@@ -329,16 +339,19 @@ All amounts in `PaymentRequirements` and payloads are in the smallest unit (atom
 | Asset Type | Unit | Decimals | Example: 10 CCD / 5 EURR |
 |------------|------|----------|---------------------------|
 | Native CCD | microCCD | 6 | `"10000000"` |
-| PLT Token | Smallest subunit | 6 | `"5000000"` |
+| PLT Token | Smallest subunit | depends on token | `"5000000"` |
 
-The server scheme handles conversion from human-readable prices:
+Prices are specified as `AssetAmount` objects with atomic units:
 
 ```typescript
-// Server scheme converts automatically:
-// price: "10"                          → amount: "10000000" (10 CCD)
-// price: "10.5"                        → amount: "10500000" (10.5 CCD)
-// price: { amount: "5", asset: "EURR" } → amount: "5" (5 EURR whole units)
+// AssetAmount pass-through — amounts are used as-is in atomic units
+// price: { amount: "10000000", asset: "CCD" }   → 10 CCD
+// price: { amount: "5000000", asset: "EURR" }   → 5 EURR
+// price: { amount: "1000", asset: "USDR" }      → 1000 USDR atomic units
 ```
+
+Raw numbers and USD strings (`"10"`, `"$0.01"`) are **not** automatically converted to CCD. To accept money-style prices, register a money parser via `scheme.registerMoneyParser()`. Without a parser, money prices throw `"Cannot resolve price"`. There is no silent CCD fallback.
+
 
 ## API Reference
 
