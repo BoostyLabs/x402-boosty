@@ -42,7 +42,6 @@
     "optional": [
       "AVM_PRIVATE_KEY",
       "APTOS_PRIVATE_KEY",
-      "CCD_FACILITATOR_WALLET_PATH",
       "CCD_NETWORK",
       "CCD_GRPC_URL",
       "HEDERA_ACCOUNT_ID",

@@ -37,7 +37,6 @@ export class FacilitatorManager {
       svmPrivateKey: process.env.FACILITATOR_SVM_PRIVATE_KEY,
       avmPrivateKey: process.env.FACILITATOR_AVM_PRIVATE_KEY,
       aptosPrivateKey: process.env.FACILITATOR_APTOS_PRIVATE_KEY,
-      ccdWalletPath: process.env.FACILITATOR_CCD_WALLET_PATH,
       ccdPrivateKey: process.env.FACILITATOR_CCD_PRIVATE_KEY,
       ccdAddress: process.env.FACILITATOR_CCD_ADDRESS,
       hederaAccountId: process.env.FACILITATOR_HEDERA_ACCOUNT_ID,

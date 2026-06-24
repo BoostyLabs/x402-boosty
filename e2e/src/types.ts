@@ -78,9 +78,8 @@ export interface ClientConfig {
   svmPrivateKey: string;
   avmPrivateKey: string;
   aptosPrivateKey: string;
-  ccdWalletPath: string;
-  ccdPrivateKey?: string;
-  ccdAddress?: string;
+  ccdPrivateKey: string;
+  ccdAddress: string;
   hederaAccountId: string;
   hederaPrivateKey: string;
   keetaClientMnemonic: string;

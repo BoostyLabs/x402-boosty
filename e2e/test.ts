@@ -637,7 +637,6 @@ async function runTest() {
   const clientSvmPrivateKey = process.env.CLIENT_SVM_PRIVATE_KEY;
   const clientAvmPrivateKey = process.env.CLIENT_AVM_PRIVATE_KEY;
   const clientAptosPrivateKey = process.env.CLIENT_APTOS_PRIVATE_KEY;
-  const clientCcdWalletPath = process.env.CLIENT_CCD_WALLET_PATH;
   const clientCcdPrivateKey = process.env.CLIENT_CCD_PRIVATE_KEY;
   const clientCcdAddress = process.env.CLIENT_CCD_ADDRESS;
   const clientHederaAccountId = process.env.CLIENT_HEDERA_ACCOUNT_ID;
@@ -649,7 +648,6 @@ async function runTest() {
   const facilitatorSvmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
   const facilitatorAvmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
   const facilitatorAptosPrivateKey = process.env.FACILITATOR_APTOS_PRIVATE_KEY;
-  const facilitatorCcdWalletPath = process.env.FACILITATOR_CCD_WALLET_PATH;
   const facilitatorCcdPrivateKey = process.env.FACILITATOR_CCD_PRIVATE_KEY;
   const facilitatorCcdAddress = process.env.FACILITATOR_CCD_ADDRESS;
   const facilitatorHederaAccountId = process.env.FACILITATOR_HEDERA_ACCOUNT_ID;
@@ -780,10 +778,8 @@ async function runTest() {
     ],
     ccd: [
       ['SERVER_CCD_ADDRESS', serverCcdAddress],
-      ['CLIENT_CCD_WALLET_PATH', clientCcdWalletPath],
       ['CLIENT_CCD_PRIVATE_KEY', clientCcdPrivateKey],
       ['CLIENT_CCD_ADDRESS', clientCcdAddress],
-      ['FACILITATOR_CCD_WALLET_PATH', facilitatorCcdWalletPath],
       ['FACILITATOR_CCD_PRIVATE_KEY', facilitatorCcdPrivateKey],
       ['FACILITATOR_CCD_ADDRESS', facilitatorCcdAddress],
     ],
@@ -829,38 +825,16 @@ async function runTest() {
     }
   }
 
-  // CCD: allow either wallet-path OR private-key+address for client and facilitator.
-  // The simple loop above marks all missing vars; remove the wallet-path entries
-  // when the corresponding private-key+address pair is present, and vice versa.
+  // CCD: require private-key+address for client and facilitator.
   if (selectedProtocolFamilies.has('ccd')) {
-    const clientHasWallet = !!clientCcdWalletPath;
     const clientHasKey = !!(clientCcdPrivateKey && clientCcdAddress);
-    const facilitatorHasWallet = !!facilitatorCcdWalletPath;
     const facilitatorHasKey = !!(facilitatorCcdPrivateKey && facilitatorCcdAddress);
 
     if (clientHasKey) {
-      missingRequiredEnv.delete('CLIENT_CCD_WALLET_PATH');
-    }
-    if (clientHasWallet) {
       missingRequiredEnv.delete('CLIENT_CCD_PRIVATE_KEY');
       missingRequiredEnv.delete('CLIENT_CCD_ADDRESS');
     }
     if (facilitatorHasKey) {
-      missingRequiredEnv.delete('FACILITATOR_CCD_WALLET_PATH');
-    }
-    if (facilitatorHasWallet) {
-      missingRequiredEnv.delete('FACILITATOR_CCD_PRIVATE_KEY');
-      missingRequiredEnv.delete('FACILITATOR_CCD_ADDRESS');
-    }
-
-    // If neither path is configured for client, keep one representative name
-    if (!clientHasWallet && !clientHasKey) {
-      // CLIENT_CCD_WALLET_PATH already in set; remove the key/address noise
-      missingRequiredEnv.delete('CLIENT_CCD_PRIVATE_KEY');
-      missingRequiredEnv.delete('CLIENT_CCD_ADDRESS');
-    }
-    // If neither path is configured for facilitator, keep one representative name
-    if (!facilitatorHasWallet && !facilitatorHasKey) {
       missingRequiredEnv.delete('FACILITATOR_CCD_PRIVATE_KEY');
       missingRequiredEnv.delete('FACILITATOR_CCD_ADDRESS');
     }
@@ -1244,7 +1218,6 @@ async function runTest() {
       svmPrivateKey: clientSvmPrivateKey!,
       avmPrivateKey: clientAvmPrivateKey || '',
       aptosPrivateKey: clientAptosPrivateKey || '',
-      ccdWalletPath: clientCcdWalletPath || '',
       ccdPrivateKey: clientCcdPrivateKey || '',
       ccdAddress: clientCcdAddress || '',
       hederaAccountId: clientHederaAccountId || '',

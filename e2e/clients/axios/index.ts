@@ -68,7 +68,6 @@ const ccdPrivateKey = process.env.CCD_PRIVATE_KEY;
 const ccdAddress = process.env.CCD_ADDRESS;
 
 /**
-const ccdAddress = process.env.CCD_ADDRESS;
  * Parses the TVM private key accepted by e2e env fixtures.
  *
  * @param privateKey - Hex or base64 seed/secret key.

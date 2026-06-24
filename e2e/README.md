@@ -89,17 +89,6 @@ Add the `-v` flag to any command for verbose output:
 
 Useful for debugging test failures or understanding the payment flow.
 
-### Concordium Offline Coverage
-
-The repo-level Concordium exact flow currently has a dedicated offline e2e regression:
-
-```bash
-pnpm test:concordium-offline
-```
-
-This covers the repo-level Concordium request/verify/settle flow without requiring
-live Concordium wallets or network access.
-
 ## Wallet Safety Warning
 
 **Use dedicated test wallets only. Do NOT use wallets that hold real funds.**
@@ -129,7 +118,8 @@ Required environment variables (set in `.env` file):
 CLIENT_EVM_PRIVATE_KEY=0x...        # EVM private key for client payments
 CLIENT_SVM_PRIVATE_KEY=...          # Solana private key for client payments
 CLIENT_APTOS_PRIVATE_KEY=...        # Aptos private key for client payments (hex string)
-CLIENT_CCD_WALLET_PATH=...          # Concordium wallet export path for client payments
+CLIENT_CCD_PRIVATE_KEY=...         # Concordium private key for client payments
+CLIENT_CCD_ADDRESS=...            # Concordium account address for client payments
 CLIENT_HEDERA_ACCOUNT_ID=0.0....    # Hedera account id for client payments
 CLIENT_HEDERA_PRIVATE_KEY=0x...     # Hedera ECDSA private key for client payments
 CLIENT_KEETA_MNEMONIC=...           # Keeta mnemonic for client payments
@@ -150,7 +140,8 @@ SERVER_TVM_ADDRESS=...              # Where servers receive TVM payments
 FACILITATOR_EVM_PRIVATE_KEY=0x...   # EVM private key for facilitator
 FACILITATOR_SVM_PRIVATE_KEY=...     # Solana private key for facilitator
 FACILITATOR_APTOS_PRIVATE_KEY=...   # Aptos private key for facilitator (hex string)
-FACILITATOR_CCD_WALLET_PATH=...     # Concordium sponsor wallet export path for facilitator
+FACILITATOR_CCD_PRIVATE_KEY=...    # Concordium private key for facilitator
+FACILITATOR_CCD_ADDRESS=...       # Concordium account address for facilitator
 FACILITATOR_HEDERA_ACCOUNT_ID=0.0... # Hedera fee payer account id for facilitator
 FACILITATOR_HEDERA_PRIVATE_KEY=0x... # Hedera ECDSA private key for facilitator
 FACILITATOR_KEETA_MNEMONIC=...      # Keeta mnemonic for facilitator
