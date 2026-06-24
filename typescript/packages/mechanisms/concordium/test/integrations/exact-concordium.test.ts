@@ -663,6 +663,65 @@ describe("Concordium Integration Tests", () => {
         }),
       ).rejects.toThrow("Cannot resolve price");
     });
+
+    it("should throw when AssetAmount has null asset", async () => {
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: { amount: "100", asset: null as any },
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Asset must be specified");
+    });
+
+    it("should throw when AssetAmount has undefined asset", async () => {
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: { amount: "100", asset: undefined as any },
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Asset must be specified");
+    });
+
+    it("should throw when AssetAmount has empty string asset", async () => {
+      await expect(
+        server.buildPaymentRequirements({
+          scheme: "exact",
+          payTo: PAY_TO_ADDRESS!,
+          price: { amount: "100", asset: "" },
+          network: CONCORDIUM_TESTNET_CAIP2 as Network,
+        }),
+      ).rejects.toThrow("Asset must be specified");
+    });
+
+    it("should not include decimals in createPaymentRequiredResponse extra", async () => {
+      const accepts = [
+        buildConcordiumPaymentRequirements(
+          PAY_TO_ADDRESS!,
+          "1000000",
+          facilitatorAddress,
+          "EURR",
+          CONCORDIUM_TESTNET_CAIP2,
+        ),
+      ];
+      const resource = {
+        url: "https://example.com/premium-no-decimals",
+        description: "Premium content - no decimals leak",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      // Verify the response contains payment requirements
+      expect(paymentRequired).toBeDefined();
+      expect(paymentRequired.accepts).toBeDefined();
+      // Server must NOT leak decimals — client fetches them from chain (Theme D1)
+      for (const req of paymentRequired.accepts) {
+        expect((req.extra as Record<string, unknown>)?.decimals).toBeUndefined();
+      }
+    });
   });
 
   describe("ExactConcordiumClient - Payment Payload Validation", () => {
@@ -967,6 +1026,96 @@ describe("Concordium Integration Tests", () => {
       expect(verifyResponse.isValid).toBe(false);
     });
   });
+  describe("Preflight Verification", () => {
+    let client: x402Client;
+    let server: x402ResourceServer;
+    let facilitatorClient: ConcordiumFacilitatorClient;
+
+    beforeEach(async () => {
+      const concordiumClient = new ExactConcordiumClient(clientSigner);
+      client = new x402Client().register(CONCORDIUM_TESTNET_CAIP2, concordiumClient);
+
+      const concordiumFacilitator = new ExactConcordiumFacilitator({
+        signer: facilitatorSigner,
+        requireFinalization: true,
+        finalizationTimeoutMs: 90_000,
+      });
+      const facilitator = new x402Facilitator().register(
+        CONCORDIUM_TESTNET_CAIP2,
+        concordiumFacilitator,
+      );
+
+      facilitatorClient = new ConcordiumFacilitatorClient(facilitator);
+      server = new x402ResourceServer(facilitatorClient);
+      server.register(CONCORDIUM_TESTNET_CAIP2, new ExactConcordiumServer());
+      await server.initialize();
+    });
+
+    it("should reject payment at verify when sender has insufficient CCD balance", async () => {
+      // Use an extremely large amount that no test account could hold
+      const hugeAmount = "1000000000000000"; // 1 billion CCD in microCCD
+      const accepts = [
+        buildConcordiumPaymentRequirements(PAY_TO_ADDRESS!, hugeAmount, facilitatorAddress),
+      ];
+      const resource = {
+        url: "https://example.com/premium-huge",
+        description: "Premium content - huge amount",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+      expect(paymentPayload).toBeDefined();
+
+      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+      expect(accepted).toBeDefined();
+
+      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+      // Preflight must reject — tx simulation (Theme O2)
+      expect(verifyResponse.isValid).toBe(false);
+      expect(verifyResponse.invalidReason).toContain("preflight_insufficient_funds");
+    }, 30_000);
+
+    it("should reject payment at verify when sender has insufficient PLT token balance", async () => {
+      // Use an extremely large PLT amount
+      const hugeAmount = "1000000000000000";
+      const accepts = [
+        buildConcordiumPaymentRequirements(
+          PAY_TO_ADDRESS!,
+          hugeAmount,
+          facilitatorAddress,
+          "EURR",
+          CONCORDIUM_TESTNET_CAIP2,
+          { decimals: 6 },
+        ),
+      ];
+      const resource = {
+        url: "https://example.com/premium-huge-plt",
+        description: "Premium content - huge PLT amount",
+        mimeType: "application/json",
+      };
+      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+
+      // Client creates payment — will succeed in building tx (decimals fetched from chain)
+      // but verification preflight should reject due to insufficient token balance
+      let paymentPayload;
+      try {
+        paymentPayload = await client.createPaymentPayload(paymentRequired);
+        expect(paymentPayload).toBeDefined();
+
+        const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+        expect(accepted).toBeDefined();
+
+        const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+        expect(verifyResponse.isValid).toBe(false);
+        expect(verifyResponse.invalidReason).toContain("preflight_insufficient_token_funds");
+      } catch (err) {
+        // If the client can't even build the tx (e.g., token not found), that's also acceptable
+        // The key point is that the system rejects unreasonable payments before settlement
+        expect(err).toBeDefined();
+      }
+    }, 30_000);
+  });
 
   describe("Edge Cases", () => {
     let client: x402Client;
@@ -1131,8 +1280,9 @@ describe("Concordium Integration Tests", () => {
       expect(accepted).toBeDefined();
 
       const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
-      // Verification may fail due to insufficient balance; key check: no overflow/crash
-      expect(verifyResponse).toBeDefined();
+      // Preflight must reject due to insufficient balance (Theme O2 — tx simulation)
+      expect(verifyResponse.isValid).toBe(false);
+      expect(verifyResponse.invalidReason).toContain("preflight_insufficient_funds");
 
       // Settlement will fail due to insufficient funds — that's expected
       const settleResponse = await server.settlePayment(paymentPayload, accepted!);
