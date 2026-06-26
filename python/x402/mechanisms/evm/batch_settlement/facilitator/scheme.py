@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from .....interfaces import FacilitatorContext
 from .....schemas import (
     PaymentPayload,
@@ -32,6 +34,20 @@ from ..types import (
 )
 
 
+@dataclass
+class BatchSettlementEvmFacilitatorConfig:
+    """Optional configuration for :class:`BatchSettlementEvmFacilitator`.
+
+    Attributes:
+        eip6492_allowed_factories: Allowlist of factory contract addresses (hex strings,
+            case-insensitive) the facilitator will call to deploy an undeployed (ERC-6492
+            counterfactual) smart wallet before an ERC-3009 deposit.  An empty list
+            (the default) denies all factory deployment.
+    """
+
+    eip6492_allowed_factories: list[str] = field(default_factory=list)
+
+
 class BatchSettlementEvmFacilitator:
     """SchemeNetworkFacilitator implementation for batch-settlement on EVM."""
 
@@ -42,9 +58,12 @@ class BatchSettlementEvmFacilitator:
         self,
         signer: FacilitatorEvmSigner,
         authorizer_signer: AuthorizerSigner,
+        config: BatchSettlementEvmFacilitatorConfig | None = None,
     ) -> None:
         self._signer = signer
         self._authorizer_signer = authorizer_signer
+        cfg = config or BatchSettlementEvmFacilitatorConfig()
+        self._eip6492_allowed_factories = list(cfg.eip6492_allowed_factories)
 
     def get_extra(self, network: str) -> dict | None:
         return {"receiverAuthorizer": self._authorizer_signer.address}
@@ -73,7 +92,14 @@ class BatchSettlementEvmFacilitator:
             from .deposit import verify_deposit
 
             deposit = DepositPayload.from_dict(raw)
-            return verify_deposit(self._signer, payload, deposit, requirements, context)
+            return verify_deposit(
+                self._signer,
+                payload,
+                deposit,
+                requirements,
+                context,
+                self._eip6492_allowed_factories,
+            )
 
         if is_voucher_payload(raw):
             from .voucher import verify_voucher
@@ -102,7 +128,14 @@ class BatchSettlementEvmFacilitator:
             from .deposit import settle_deposit
 
             deposit = DepositPayload.from_dict(raw)
-            return settle_deposit(self._signer, payload, deposit, requirements, context)
+            return settle_deposit(
+                self._signer,
+                payload,
+                deposit,
+                requirements,
+                context,
+                self._eip6492_allowed_factories,
+            )
 
         if is_claim_payload(raw):
             from .claim import execute_claim_with_signature

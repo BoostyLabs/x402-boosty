@@ -30,6 +30,11 @@ ERR_DEPOSIT_PAYLOAD = "invalid_batch_settlement_evm_deposit_payload"
 ERR_DEPOSIT_SIMULATION_FAILED = "invalid_batch_settlement_evm_deposit_simulation_failed"
 ERR_DEPOSIT_TRANSACTION_FAILED = "invalid_batch_settlement_evm_deposit_transaction_failed"
 
+# ERC-6492 counterfactual deployment errors (ERC-3009 deposit path). Wire values keep the
+# scheme prefix to match the rest of this module's contract.
+ERR_FACTORY_NOT_ALLOWED = "invalid_batch_settlement_evm_eip6492_factory_not_allowed"
+ERR_SMART_WALLET_DEPLOYMENT_FAILED = "invalid_batch_settlement_evm_smart_wallet_deployment_failed"
+
 ERR_VOUCHER_PAYLOAD = "invalid_batch_settlement_evm_voucher_payload"
 
 ERR_CLAIM_PAYLOAD = "invalid_batch_settlement_evm_claim_payload"
